@@ -1,0 +1,5 @@
+(fn main (argc u64 argv (ptr (ptr c_char)))
+  (set-var a auto 3)
+  (set-var b auto 4)
+  (set-var res auto (+ a b))
+  res)

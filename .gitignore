@@ -1,0 +1,4 @@
+.projectile
+deps
+!deps/.gitkeep
+build
