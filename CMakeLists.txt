@@ -9,12 +9,13 @@ set (src-dir ${root-dir}/src)
 
 set (cello-srcs
   ${src-dir}/main.cpp
+  ${src-dir}/lexer.cpp
   )
 
 add_executable(cello ${cello-srcs})
-target_include_directories(cello PUBLIC ${root-dir}/variant/include)
-target_include_directories(cello PUBLIC ${root-dir}/string-view-lite/include)
-target_include_directories(cello PUBLIC ${root-dir}/optional-lite/include)
+target_include_directories(cello PUBLIC ${root-dir}/deps/variant/include)
+target_include_directories(cello PUBLIC ${root-dir}/deps/string-view-lite/include)
+target_include_directories(cello PUBLIC ${root-dir}/deps/optional-lite/include)
 
 if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
 	link_directories(/usr/local/lib)
