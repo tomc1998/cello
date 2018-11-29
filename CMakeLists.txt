@@ -15,6 +15,7 @@ set (cello-srcs
   ${src-dir}/main.cpp
   ${src-dir}/lexer.cpp
   ${src-dir}/ast_type.cpp
+  ${src-dir}/ast_expr.cpp
   )
 
 add_executable(cello ${cello-srcs})

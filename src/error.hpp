@@ -5,6 +5,8 @@
 #include <string>
 #include <cassert>
 
+#include "source_label.hpp"
+
 namespace cello {
   enum class error_type {
     error, warning

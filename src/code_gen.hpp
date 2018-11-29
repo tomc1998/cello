@@ -47,15 +47,9 @@ namespace cello {
             std::cout << std::endl;
             std::cout << "FUNCTION " << function_opt->name << std::endl;
             std::cout << "\t~\tNum args: " << function_opt->args.size() << std::endl;
+            std::cout << "\t~\tNum exprs: " << function_opt->expressions.size() << std::endl;
             for (const auto &arg : function_opt->args) {
               std::cout << "\t~\t" << arg.type.to_string() << " " << arg.name << std::endl;
-            }
-          } else {
-            l.restore();
-            if (!consume_to_closing_paren(l)) {
-              l.restore();
-              report_error(l.get_curr_source_label(), "Unmatched paren");
-              return;
             }
           }
         }

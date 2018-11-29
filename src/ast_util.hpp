@@ -39,6 +39,27 @@
                           lexer.get_curr_source_label(),                \
                           "Expected " human_readable_exp);
 
+/**
+ * Assert that there are more tokens - if the condition is false, report
+ * an error with the given label and message, then return nonstd::nullopt.
+ * requires that error.hpp and nonstd/optional.hpp are in scope.
+ */
+#define ASSERT_TOK_EXISTS_OR_ERROR_AND_RET(lexer, human_readable_exp)   \
+  ASSERT_OR_ERROR_AND_RET(lexer.peek(),                                 \
+                          lexer.get_curr_source_label(),                \
+                          "Expected " human_readable_exp ", got EOF");  \
+
+/** Calls consume_to_closing_paren, if that fails to find a close paren, add an
+    unmatched paren error. */
+#define CONSUME_TO_END_PAREN_OR_ERROR(lexer)                            \
+  {                                                                     \
+    const auto sl_##__LINE__ = lexer.get_curr_source_label();           \
+    if (!consume_to_closing_paren(lexer)) {                             \
+      report_error(sl_##__LINE__, "Unmatched paren");                   \
+    }                                                                   \
+  }
+
+
 namespace cello {
 
   /** Consume until the next closing paren, taking into account opening parens.
