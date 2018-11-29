@@ -1,5 +1,6 @@
 #pragma once
 
+#include <vector>
 #include <cassert>
 #include "comptime_expr.hpp"
 #include <nonstd/optional.hpp>
