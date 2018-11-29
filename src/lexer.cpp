@@ -1,5 +1,7 @@
 #include "lexer.hpp"
+#include "source_label.hpp"
 
+#include <cstdint>
 #include <regex>
 #include <exception>
 
@@ -19,6 +21,7 @@ namespace cello {
 
   void lexer::consume_whitespace() {
     while (input_ptr < input.size() && is_whitespace(input[input_ptr])) {
+      if (input[input_ptr] == '\n') { curr_line ++; }
       input_ptr ++;
     }
   }
@@ -69,5 +72,28 @@ namespace cello {
     } else {
       return consume();
     }
+  }
+
+  source_label lexer::get_curr_source_label() {
+    // Loop back, find line start
+    auto pos = input_ptr;
+    while(true) {
+      if (input[pos] == '\n' || pos == 0)  { break; }
+      pos --;
+    }
+    auto char_pos = (std::uint32_t)(input_ptr - (pos + 1));
+    if (curr_peek) { char_pos -= curr_peek->val.size(); }
+    return { file_name, curr_line, char_pos };
+  }
+
+  static nonstd::optional<lexer> lexer_copy = nonstd::nullopt;
+
+  void lexer::backup() {
+    lexer_copy = { *this };
+  }
+
+  void lexer::restore() {
+    assert(lexer_copy);
+    *this = *lexer_copy;
   }
 }

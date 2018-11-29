@@ -1,5 +1,7 @@
 #pragma once
 
+#include "source_label.hpp"
+
 #include <string>
 #include <nonstd/optional.hpp>
 #include <nonstd/string_view.hpp>
@@ -15,7 +17,9 @@ namespace cello {
   };
 
   class lexer {
+    std::uint32_t curr_line = 1;
     std::size_t input_ptr = 0;
+    nonstd::string_view file_name;
     std::string input;
     nonstd::optional<token> curr_peek;
     /** Actually consume a token */
@@ -23,8 +27,14 @@ namespace cello {
     /** Just consume & throw away whitespace */
     void consume_whitespace();
   public:
-    lexer(std::string data) : input(data) {}
+    lexer(nonstd::string_view file_name, std::string data) : file_name(file_name), input(data) {}
     const nonstd::optional<token> &peek();
     nonstd::optional<token> next();
+    source_label get_curr_source_label();
+
+    /** Used for handling errors properly */
+    void backup();
+    /** Used for handling errors properly - asserts if no lexer state */
+    void restore();
   };
 }

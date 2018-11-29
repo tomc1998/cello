@@ -1,19 +1,26 @@
 #include <iostream>
 #include <fstream>
 
+#include "ast_type.hpp"
+#include "comptime_expr.hpp"
+#include "code_gen.hpp"
+#include "ast_function.hpp"
 #include "lexer.hpp"
 
 using namespace cello;
 
 int main(int argc, char** argv) {
-  std::ifstream t("example-tests/test-00.cel");
+  auto file_name = "example-tests/test-00.cel";
+  std::ifstream t(file_name);
   std::string file((std::istreambuf_iterator<char>(t)),
                    std::istreambuf_iterator<char>());
-  std::cout << file << std::endl;
 
-  lexer l(file);
-  std::cout << "TOKENS:" << std::endl;
-  while (l.peek()) {
-    std::cout << l.next()->val << std::endl;
+  lexer l(file_name, file);
+
+  cello::code_gen(l);
+  if (print_all_errors()) {
+    return 1;
+  } else {
+    return 0;
   }
 }
