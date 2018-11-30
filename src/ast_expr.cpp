@@ -91,7 +91,6 @@ namespace cello {
 
   nonstd::optional<llvm::Value*> expr::code_gen(scope &s, llvm::IRBuilder<> &b) const {
     if (val.template is<bin_op_expr>()) {
-      std::cout << (int)val.template get<bin_op_expr>().op << std::endl;
       return val.template get<bin_op_expr>().code_gen(sl, s, b);
     } else if (val.template is<variable>()) {
       const auto &name = val.template get<variable>().val;

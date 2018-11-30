@@ -73,7 +73,7 @@ namespace cello {
 
             // Create scope and add args to scope
             auto function_scope = global_scope.create_subscope();
-            for (int ii = 0; ii < function_opt->args.size(); ++ii) {
+            for (unsigned ii = 0; ii < function_opt->args.size(); ++ii) {
               const auto arg_name = function_opt->args[ii].name;
               const auto arg_value = f->arg_begin() + ii;
               const named_value nv { named_value_type::var, arg_value };
@@ -84,7 +84,7 @@ namespace cello {
             bool has_errored = false;
             BasicBlock *bb = BasicBlock::Create(llvm_ctx, "entry", f);
             builder.SetInsertPoint(bb);
-            for (int ii = 0; ii < function_opt->expressions.size(); ++ii) {
+            for (unsigned ii = 0; ii < function_opt->expressions.size(); ++ii) {
               const auto &e = function_opt->expressions[ii];
               const auto value_opt = e.code_gen(function_scope, builder);
               if (!value_opt) { has_errored = true; continue; }
@@ -93,7 +93,9 @@ namespace cello {
               }
             }
 
-            f->print(errs());
+            if (!has_errored) {
+              f->print(errs());
+            }
           }
         }
       } else {

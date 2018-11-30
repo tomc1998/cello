@@ -17,6 +17,7 @@ set (cello-srcs
   ${src-dir}/ast_type.cpp
   ${src-dir}/ast_expr.cpp
   ${src-dir}/scope.cpp
+  ${src-dir}/error.cpp
   )
 
 add_executable(cello ${cello-srcs})

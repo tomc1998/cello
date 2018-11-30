@@ -1,3 +1,5 @@
+#include <iostream>
+
 #include "ast_type.hpp"
 #include "lexer.hpp"
 #include "error.hpp"
