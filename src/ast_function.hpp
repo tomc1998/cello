@@ -16,6 +16,7 @@ namespace cello {
 
   struct function {
     nonstd::string_view name;
+    type_ident return_type;
     std::vector<arg> args;
     std::vector<expr> expressions;
   };
@@ -63,6 +64,11 @@ namespace cello {
       return nonstd::nullopt;
     }
     const auto name = l.next()->val;
+    const auto return_type_opt = parse_type_ident(l);
+    if (!return_type_opt) {
+      CONSUME_TO_END_PAREN_OR_ERROR(l);
+      return nonstd::nullopt;
+    }
     const auto arg_list_opt = parse_arg_list(l);
     if (!arg_list_opt) {
       CONSUME_TO_END_PAREN_OR_ERROR(l);
@@ -90,6 +96,6 @@ namespace cello {
       return nonstd::nullopt;
     }
 
-    return { { name, *arg_list_opt, expr_list } };
+    return { { name, *return_type_opt, *arg_list_opt, expr_list } };
   };
 }

@@ -1,14 +1,20 @@
 #pragma once
 
 #include "ast_type.hpp"
-#include <llvm/ADT/APInt.h>
+#include "source_label.hpp"
 #include <memory>
 #include <nonstd/optional.hpp>
 #include <nonstd/string_view.hpp>
+#include <llvm/IR/IRBuilder.h>
+
+namespace llvm {
+  class Value;
+}
 
 namespace cello {
   class lexer;
   struct expr;
+  struct scope;
 
   enum class bin_op {
     add, sub, div, mul
@@ -23,6 +29,7 @@ namespace cello {
     bin_op_expr(const bin_op_expr &other);
     bin_op_expr(bin_op op, expr* lchild,
                 expr* rchild) : op(op), lchild(lchild), rchild(rchild) {}
+    nonstd::optional<llvm::Value*> code_gen(const source_label &sl, scope &s, llvm::IRBuilder<> &b) const;
   };
 
   struct un_op_expr {};
@@ -49,9 +56,13 @@ namespace cello {
   };
 
   struct expr {
+    source_label sl;
     mapbox::util::variant<function_call, bin_op_expr, un_op_expr, variable, int_lit,
                  float_lit, string_lit, set_var_expr, set_expr> val;
     std::string to_string() const;
+    /** Build this expression, returning the value of the expression as an LLVM
+        value. Returns nullopt on error. */
+    nonstd::optional<llvm::Value*> code_gen(scope &s, llvm::IRBuilder<> &b) const;
   };
 
   nonstd::optional<expr> parse_expr(lexer &l);

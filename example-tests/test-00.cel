@@ -1,9 +1,9 @@
 
-(fn main (argc u64 argv (ptr (ptr c_char)))
+(fn main void (argc u64 argv (ptr (ptr c_char)))
   (set-var a auto 3)
   (set-var b auto 4)
   (set-var res auto (+ a b))
   res)
 
-(fn add (a u64 b u64)
+(fn add u64 (a u64 b u64)
   (+ a b))

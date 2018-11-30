@@ -16,6 +16,7 @@ set (cello-srcs
   ${src-dir}/lexer.cpp
   ${src-dir}/ast_type.cpp
   ${src-dir}/ast_expr.cpp
+  ${src-dir}/scope.cpp
   )
 
 add_executable(cello ${cello-srcs})
@@ -36,11 +37,11 @@ target_link_libraries(cello ${llvm_libs})
 
 if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
 	link_directories(/usr/local/lib)
-  set (CMAKE_CXX_FLAGS "--std=c++14 -Wall -Werror -g")
+  set (CMAKE_CXX_FLAGS "--std=c++14 -Wall -Werror -g -O3")
 endif()
 
 message(${CMAKE_CXX_COMPILER_ID})
 if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang" OR "${CMAKE_CXX_COMPILER_ID}" STREQUAL "AppleClang")
 	link_directories(/usr/local/lib)
-  set (CMAKE_CXX_FLAGS "-std=c++14 -Wall -Werror -g")
+  set (CMAKE_CXX_FLAGS "-std=c++14 -Wall -Werror -g -O3")
 endif()
