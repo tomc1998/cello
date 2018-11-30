@@ -1,5 +1,7 @@
 #include <iostream>
 
+#include <llvm/IR/DerivedTypes.h>
+#include "ast_util.hpp"
 #include "ast_type.hpp"
 #include "lexer.hpp"
 #include "error.hpp"
@@ -9,12 +11,30 @@ namespace cello {
   ptr_type::ptr_type(const ptr_type& other) : val(new type_ident(*other.val)) {}
 
   nonstd::optional<type_ident> parse_type_ident(lexer &l) {
+    const auto sl = l.get_curr_source_label();
     if (l.peek() && l.peek()->type == token_type::ident) {
-      return { { l.get_curr_source_label(), type_symbol { l.next()->val } } };
+      return { { sl, type_symbol { l.next()->val } } };
     } else if (l.peek() && l.peek()->val == "(") {
-      report_error(l.get_curr_source_label(),
-                   "Unimplemented type parsing");
-      return nonstd::nullopt;
+      l.next();
+      if (l.peek() && l.peek()->val == "ptr") {
+        l.next();
+        const auto type = parse_type_ident(l);
+        if (!type) {
+          CONSUME_TO_END_PAREN_OR_ERROR(l);
+          return nonstd::nullopt;
+        }
+        if (!l.peek() || l.peek()->val != ")") {
+          report_error(sl, "Expected ')' to end the ptr type declaration");
+          CONSUME_TO_END_PAREN_OR_ERROR(l);
+          return nonstd::nullopt;
+        }
+        l.next();
+        return { { sl, ptr_type { new type_ident(*type) } } };
+      } else {
+        report_error(sl, "Expected 'ptr', for a ptr type declaration");
+        CONSUME_TO_END_PAREN_OR_ERROR(l);
+        return nonstd::nullopt;
+      }
     } else {
       report_error(l.get_curr_source_label(),
                    "Expected type, starting with '(' or an identifier");
@@ -37,6 +57,10 @@ namespace cello {
         return nonstd::nullopt;
       }
       return type_opt;
+    } else if (val.template is<ptr_type>()) {
+      const auto type = val.template get<ptr_type>().val->code_gen(s);
+      if (!type) { return nonstd::nullopt; }
+      return { llvm::PointerType::getUnqual(*type) };
     }
     assert(false);
   }

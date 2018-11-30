@@ -13,9 +13,10 @@ namespace cello {
   bin_op_expr::bin_op_expr(const bin_op_expr &other)
     : op(other.op), lchild(new expr(*other.lchild)), rchild(new expr(*other.rchild)) {};
 
-  set_var_expr::set_var_expr(const set_var_expr &other)
+  mut_expr::mut_expr(const mut_expr &other)
     : var(other.var), type(other.type), val(new expr(*other.val)) {};
-
+  let_expr::let_expr(const let_expr &other) noexcept
+    : var(other.var), type(other.type), val(new expr(*other.val)) {};
   set_expr::set_expr(const set_expr &other) noexcept
     : var(other.var), val(new expr(*other.val)) {};
 
@@ -50,6 +51,29 @@ namespace cello {
         }
         l.next();
         return { { sl, bin_op_expr { op, new expr(*lchild), new expr(*rchild) } } };
+      } else if (l.peek()->val == "let") {
+        l.next();
+        ASSERT_TOK_EXISTS_OR_ERROR_AND_RET(l, "variable name");
+        const auto name = l.next()->val;
+        ASSERT_TOK_EXISTS_OR_ERROR_AND_RET(l, "type");
+        assert(l.peek()->val != "auto" && "Unimplemented type inference handling");
+        const auto type = parse_type_ident(l);
+        if (!type) {
+          CONSUME_TO_END_PAREN_OR_ERROR(l);
+          return nonstd::nullopt;
+        }
+        const auto e = parse_expr(l);
+        if (!e) {
+          CONSUME_TO_END_PAREN_OR_ERROR(l);
+          return nonstd::nullopt;
+        }
+        if (!l.peek() || l.peek()->val != ")") {
+          report_error(l.get_curr_source_label(), "Expected ')'");
+          CONSUME_TO_END_PAREN_OR_ERROR(l);
+          return nonstd::nullopt;
+        }
+        l.next();
+        return { { sl, let_expr { { name }, *type, new expr(*e) } } };
       }
     } else if (l.peek()->type == token_type::ident) {
       return { { sl, variable { l.next()->val } } };
@@ -72,7 +96,8 @@ namespace cello {
                      [&](int_lit x)       { return std::string("int_lit"); },
                      [&](float_lit x)     { return std::string("float_lit"); },
                      [&](string_lit x)    { return std::string("string_lit"); },
-                     [&](set_var_expr x)  { return std::string("set_var_expr"); },
+                     [&](mut_expr x)      { return std::string("mut_expr"); },
+                     [&](let_expr x)      { return std::string("let_expr"); },
                      [&](set_expr x)      { return std::string("set_expr"); });
   }
 
@@ -100,6 +125,15 @@ namespace cello {
         return nonstd::nullopt;
       }
       return { value->second.v };
+    } else if (val.template is<let_expr>()) {
+      const auto &e = val.template get<let_expr>();
+      const auto e_val = e.val->code_gen(s, b);
+      if (!e_val) { return nonstd::nullopt; }
+      s.symbol_table.insert(std::make_pair(e.var.val, named_value {named_value_type::var, *e_val}));
+      return *e_val;
+    } else if (val.template is<int_lit>()) {
+      return { llvm::ConstantInt::get(llvm::Type::getInt64Ty(b.getContext()),
+                                      llvm::APInt(val.template get<int_lit>().val)) };
     }
     report_error(sl, std::string("Code gen not implemented for this type of expr: ") + to_string());
     return nonstd::nullopt;

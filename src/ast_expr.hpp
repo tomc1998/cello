@@ -42,11 +42,21 @@ namespace cello {
   struct float_lit {};
   struct string_lit {};
 
-  struct set_var_expr {
+  struct mut_expr {
     variable var;
     type_ident type;
     std::unique_ptr<expr> val;
-    set_var_expr(const set_var_expr &other);
+    mut_expr(const mut_expr &other);
+  };
+
+  /** Declare an immutable value */
+  struct let_expr {
+    variable var;
+    type_ident type;
+    std::unique_ptr<expr> val;
+    let_expr(const let_expr &other) noexcept;
+    let_expr(variable var, type_ident type, expr* val)
+      : var(var), type(type), val(val) {};
   };
 
   struct set_expr {
@@ -58,7 +68,7 @@ namespace cello {
   struct expr {
     source_label sl;
     mapbox::util::variant<function_call, bin_op_expr, un_op_expr, variable, int_lit,
-                 float_lit, string_lit, set_var_expr, set_expr> val;
+                          float_lit, string_lit, mut_expr, set_expr, let_expr> val;
     std::string to_string() const;
     /** Build this expression, returning the value of the expression as an LLVM
         value. Returns nullopt on error. */

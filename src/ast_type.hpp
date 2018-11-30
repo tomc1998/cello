@@ -23,6 +23,7 @@ namespace cello {
   struct ptr_type {
     std::unique_ptr<type_ident> val;
     ptr_type(const ptr_type& other);
+    ptr_type(type_ident* val) : val(val) {};
   };
 
   /** A symbol, representing a type. */
