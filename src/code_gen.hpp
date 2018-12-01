@@ -30,12 +30,19 @@
 #include "lexer.hpp"
 #include "scope.hpp"
 #include "builtin_types.hpp"
+#include "obj_file_gen.hpp"
 
 namespace cello {
 
-  using namespace llvm;
-
   void code_gen(lexer& l) {
+    using namespace llvm;
+
+    InitializeAllTargetInfos();
+    InitializeAllTargets();
+    InitializeAllTargetMCs();
+    InitializeAllAsmParsers();
+    InitializeAllAsmPrinters();
+
     static LLVMContext llvm_ctx;
     static IRBuilder<> builder(llvm_ctx);
     std::unique_ptr<Module> module = make_unique<Module>("test_mod", llvm_ctx);
@@ -98,5 +105,7 @@ namespace cello {
       }
     continue_outer:;
     }
+
+    write_to_obj("test_mod.o", module.get());
   }
 };
