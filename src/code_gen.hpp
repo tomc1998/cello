@@ -54,11 +54,11 @@ namespace cello {
             for (const auto &a  : function_opt->args) {
               const auto arg_type = a.type.code_gen(global_scope);
               if (!arg_type) {goto continue_outer;}
-              arg_types.push_back(*arg_type);
+              arg_types.push_back(arg_type->to_llvm_type(llvm_ctx));
             }
             const auto return_type = function_opt->return_type.code_gen(global_scope);
             if (!return_type) { goto continue_outer; }
-            const auto ft = FunctionType::get(*return_type, arg_types, false);
+            const auto ft = FunctionType::get(return_type->to_llvm_type(llvm_ctx), arg_types, false);
             const auto llvm_name = StringRef(function_opt->name.begin(), function_opt->name.size());
             const auto f = Function::Create(ft, Function::ExternalLinkage, llvm_name, module.get());
 
@@ -66,8 +66,10 @@ namespace cello {
             auto function_scope = global_scope.create_subscope();
             for (unsigned ii = 0; ii < function_opt->args.size(); ++ii) {
               const auto arg_name = function_opt->args[ii].name;
+              const auto arg_type = function_opt->args[ii].type.code_gen(global_scope);
+              if (!arg_type) { continue; }
               const auto arg_value = f->arg_begin() + ii;
-              const named_value nv { named_value_type::var, arg_value };
+              const named_value nv { var { *arg_type, arg_value } };
               function_scope.symbol_table.insert(std::make_pair(arg_name, nv));
             }
 

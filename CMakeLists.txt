@@ -17,8 +17,11 @@ set (cello-srcs
   ${src-dir}/ast_type.cpp
   ${src-dir}/ast_expr.cpp
   ${src-dir}/ast_control.cpp
+  ${src-dir}/ast_function.cpp
   ${src-dir}/scope.cpp
   ${src-dir}/error.cpp
+  ${src-dir}/type.cpp
+  ${src-dir}/builtin_types.cpp
   )
 
 add_executable(cello ${cello-srcs})

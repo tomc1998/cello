@@ -6,6 +6,15 @@ namespace cello {
     return { this, {} };
   }
 
+  bool named_value::is_of_type(const named_value_type &t) const {
+    switch (t) {
+    case named_value_type::type:     return val.template is<type>();
+    case named_value_type::var:      return val.template is<var>();
+    case named_value_type::function: return val.template is<function>();
+    }
+    assert(false);
+  }
+
   const named_value* scope::find_symbol_with_type(const nonstd::string_view name,
                                             const named_value_type type) const {
     const auto res = symbol_table.find(name);
@@ -17,7 +26,7 @@ namespace cello {
       }
     }
     const auto nv = &res->second;
-    if (nv->type == type) {
+    if (nv->is_of_type(type)) {
       return nv;
     } else if (parent) {
       return parent->find_symbol_with_type(name, type);
@@ -37,7 +46,7 @@ namespace cello {
       }
     }
     auto nv = &res->second;
-    if (nv->type == type) {
+    if (nv->is_of_type(type)) {
       return nv;
     } else if (parent) {
       return parent->find_symbol_with_type(name, type);

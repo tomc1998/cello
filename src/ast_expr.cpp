@@ -3,6 +3,7 @@
 #include "ast_util.hpp"
 #include "lexer.hpp"
 #include "scope.hpp"
+#include "builtin_types.hpp"
 
 #include <string>
 #include <llvm/ADT/APInt.h>
@@ -141,12 +142,14 @@ namespace cello {
         report_error(sl, std::string("Undefined variable '") + std::string(name) + "'");
         return nonstd::nullopt;
       }
-      return { n_value->v };
+      return { n_value->val.template get<var>().val };
     } else if (val.template is<let_expr>()) {
       const auto &e = val.template get<let_expr>();
       const auto e_val = e.val->code_gen(s, b);
       if (!e_val) { return nonstd::nullopt; }
-      s.symbol_table.insert(std::make_pair(e.var.val, named_value {named_value_type::var, *e_val}));
+      const auto e_type = e.type.code_gen(s);
+      if (!e_type) { return nonstd::nullopt; }
+      s.symbol_table.insert(std::make_pair(e.var.val, named_value { var { *e_type, *e_val } }));
       return *e_val;
     } else if (val.template is<if_expr>()) {
       const auto &e = val.template get<if_expr>();
@@ -182,16 +185,40 @@ namespace cello {
       prev_block->getParent()->getBasicBlockList().push_back(end_block);
       b.SetInsertPoint(end_block);
 
-      auto phi = b.CreatePHI(llvm::Type::getInt64Ty(llvm_ctx), 2, "iftmp");
+      auto this_type = get_type(s);
+      if (!this_type) { return nonstd::nullopt; }
+
+      auto phi = b.CreatePHI(this_type->to_llvm_type(llvm_ctx), 2, "iftmp");
       phi->addIncoming(*true_val, true_block);
       phi->addIncoming(*false_val, false_block);
 
-      return phi;
+      return { phi };
     } else if (val.template is<int_lit>()) {
       return { llvm::ConstantInt::get(llvm::Type::getInt64Ty(b.getContext()),
                                       llvm::APInt(val.template get<int_lit>().val)) };
     }
     report_error(sl, std::string("Code gen not implemented for this type of expr: ") + to_string());
     return nonstd::nullopt;
+  }
+
+  nonstd::optional<type> expr::get_type(const scope& s) const {
+    if (val.template is<bin_op_expr>()) {
+      // Assume lchild is the same type as rchild
+      return val.template get<bin_op_expr>().lchild->get_type(s);
+    } else if (val.template is<variable>()) {
+      const auto v = s.find_symbol_with_type(val.template get<variable>().val, named_value_type::var);
+      if (!v) { return nonstd::nullopt; }
+      return { v->val.template get<var>().var_type };
+    } else if (val.template is<let_expr>()) {
+      return val.template get<let_expr>().type.code_gen(s);
+    } else if (val.template is<if_expr>()) {
+      // Assume true_val is the same type as false_val
+      return val.template get<if_expr>().true_expr->get_type(s);
+    } else if (val.template is<int_lit>()) {
+      const auto &x = val.template get<int_lit>().val;
+      if (x.isIntN(64)) { return { builtin_ty_u64 }; }
+      else { assert(false && "Int lit won't fit, insert proper error here"); }
+    }
+    assert(false);
   }
 }

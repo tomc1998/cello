@@ -12,6 +12,7 @@
 
 #include <llvm/IR/Type.h>
 
+#include "type.hpp"
 #include "source_label.hpp"
 
 namespace cello {
@@ -42,7 +43,7 @@ namespace cello {
     source_label sl;
     mapbox::util::variant<ptr_type, type_symbol, type_function_call> val;
     std::string to_string() const;
-    nonstd::optional<llvm::Type*> code_gen(const scope& s) const;
+    nonstd::optional<type> code_gen(const scope& s) const;
   };
 
   nonstd::optional<type_ident> parse_type_ident(lexer &l);

@@ -75,6 +75,8 @@ namespace cello {
     /** Build this expression, returning the value of the expression as an LLVM
         value. Returns nullopt on error. */
     nonstd::optional<llvm::Value*> code_gen(scope &s, llvm::IRBuilder<> &b) const;
+    /** Get the type of this expression */
+    nonstd::optional<type> get_type(const scope& s) const;
   };
 
   nonstd::optional<expr> parse_expr(lexer &l);

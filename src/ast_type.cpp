@@ -48,7 +48,7 @@ namespace cello {
                      [&] (type_function_call x) { return std::string("GENERIC_TYPE"); });
   }
 
-  nonstd::optional<llvm::Type*> type_ident::code_gen(const scope& s) const {
+  nonstd::optional<type> type_ident::code_gen(const scope& s) const {
     if (val.template is<type_symbol>()) {
       const auto v = val.template get<type_symbol>().val;
       const auto type_opt = s.find_symbol_with_type(v, named_value_type::type);
@@ -56,11 +56,12 @@ namespace cello {
         report_error(sl, std::string("Undefined typename ") + std::string(v));
         return nonstd::nullopt;
       }
-      return { (llvm::Type*) type_opt->v };
+      return { type_opt->val.template get<type>() };
     } else if (val.template is<ptr_type>()) {
-      const auto type = val.template get<ptr_type>().val->code_gen(s);
+      auto type = val.template get<ptr_type>().val->code_gen(s);
       if (!type) { return nonstd::nullopt; }
-      return { llvm::PointerType::getUnqual(*type) };
+      type->num_ptr ++;
+      return type;
     }
     assert(false);
   }
