@@ -43,20 +43,13 @@ namespace cello {
     scope global_scope;
     setup_builtin_types(llvm_ctx, global_scope);
 
+    int counter = 0;
     while(l.peek()) {
       if (l.peek() && l.peek()->val == "(") {
         l.next();
-        l.backup();
         if (l.peek() && l.peek()->val == "fn") {
           const auto function_opt = parse_function(l);
           if (function_opt) {
-            std::cout << std::endl;
-            std::cout << "FUNCTION " << function_opt->name << std::endl;
-            std::cout << "\t~\tNum args: " << function_opt->args.size() << std::endl;
-            std::cout << "\t~\tNum exprs: " << function_opt->expressions.size() << std::endl;
-            for (const auto &arg : function_opt->args) {
-              std::cout << "\t~\t" << arg.type.to_string() << " " << arg.name << std::endl;
-            }
 
             // Code gen for this function
             std::vector<Type*> arg_types;
@@ -98,6 +91,7 @@ namespace cello {
             }
           }
         }
+        std::cout << "Function no " << counter++ << std::endl;
       } else {
         report_error(l.get_curr_source_label(),
                      std::string("Unexpected token ") + std::string(l.peek()->val));

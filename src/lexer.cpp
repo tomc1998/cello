@@ -30,25 +30,26 @@ namespace cello {
     consume_whitespace();
     if (input_ptr >= input.size()) { return nonstd::nullopt; }
     std::cmatch m;
-    auto curr_str = input.c_str() + input_ptr;
+    const char* start = input.c_str() + input_ptr;
+    const char* end = input.c_str() + input.size();
     nonstd::optional<token> tok = nonstd::nullopt;
-    if (std::regex_search(curr_str, m, r_comment, std::regex_constants::match_continuous)) {
-      tok = token { nonstd::string_view (curr_str, m.length()), token_type::comment };
+    if (std::regex_search(start, end, m, r_comment, std::regex_constants::match_continuous)) {
+      tok = token { nonstd::string_view (start, m.length()), token_type::comment };
       input_ptr += m.length();
-    } else if (std::regex_search(curr_str, m, r_punc, std::regex_constants::match_continuous)) {
-      tok = token { nonstd::string_view (curr_str, m.length()), token_type::punc };
+    } else if (std::regex_search(start, end, m, r_punc, std::regex_constants::match_continuous)) {
+      tok = token { nonstd::string_view (start, m.length()), token_type::punc };
       input_ptr += m.length();
-    } else if (std::regex_search(curr_str, m, r_string_lit, std::regex_constants::match_continuous)) {
-      tok = token { nonstd::string_view (curr_str, m.length()), token_type::string_lit };
+    } else if (std::regex_search(start, end, m, r_string_lit, std::regex_constants::match_continuous)) {
+      tok = token { nonstd::string_view (start, m.length()), token_type::string_lit };
       input_ptr += m.length();
-    } else if (std::regex_search(curr_str, m, r_int_lit, std::regex_constants::match_continuous)) {
-      tok = token { nonstd::string_view (curr_str, m.length()), token_type::int_lit };
+    } else if (std::regex_search(start, end, m, r_int_lit, std::regex_constants::match_continuous)) {
+      tok = token { nonstd::string_view (start, m.length()), token_type::int_lit };
       input_ptr += m.length();
-    } else if (std::regex_search(curr_str, m, r_float_lit, std::regex_constants::match_continuous)) {
-      tok = token { nonstd::string_view (curr_str, m.length()), token_type::float_lit };
+    } else if (std::regex_search(start, end, m, r_float_lit, std::regex_constants::match_continuous)) {
+      tok = token { nonstd::string_view (start, m.length()), token_type::float_lit };
       input_ptr += m.length();
-    } else if (std::regex_search(curr_str, m, r_ident, std::regex_constants::match_continuous)) {
-      tok = token { nonstd::string_view (curr_str, m.length()), token_type::ident };
+    } else if (std::regex_search(start, end, m, r_ident, std::regex_constants::match_continuous)) {
+      tok = token { nonstd::string_view (start, m.length()), token_type::ident };
       input_ptr += m.length();
     } else {
       throw std::runtime_error(std::string("Failed to match token input: ")
