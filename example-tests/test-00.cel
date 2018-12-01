@@ -3,7 +3,8 @@
   (let a u64 3)
   (let b u64 4)
   (let res u64 (+ a b))
-  res)
+  (if (> b a) res 0)
+  )
 
 (fn add u64 (a u64 b u64)
   (+ a b))

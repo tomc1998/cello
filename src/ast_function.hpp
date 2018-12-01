@@ -87,6 +87,7 @@ namespace cello {
       const auto e = parse_expr(l);
       if (!e) {
         CONSUME_TO_END_PAREN_OR_ERROR(l);
+        found_closing_paren = true;
         break;
       }
       expr_list.push_back(*e);

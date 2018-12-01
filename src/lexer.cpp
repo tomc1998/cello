@@ -1,11 +1,12 @@
 #include "lexer.hpp"
 #include "source_label.hpp"
 
+#include <algorithm>
 #include <cstdint>
 #include <regex>
 #include <exception>
 
-std::regex r_ident = std::regex("[A-Za-z\\/,\\.\\+\\*#'`@_\\-][0-9A-Za-z\\/,\\.\\+\\*#'`@_\\-]*");
+std::regex r_ident = std::regex("[A-Za-z<>=\\/,\\.\\+\\*#'`@_\\-][0-9A-Za-z\\/,\\.\\+\\*#'`@_\\-]*");
 std::regex r_punc = std::regex("(\\(|\\))");
 std::regex r_float_lit = std::regex("[-+]?[0-9]\\.[0-9]");
 std::regex r_int_lit = std::regex("(0b|0x)?[0-9]+");
@@ -82,12 +83,21 @@ namespace cello {
       if (input[pos] == '\n' || pos == 0)  { break; }
       pos --;
     }
-    auto char_pos = (std::uint32_t)(input_ptr - (pos + 1));
+    auto char_pos = (std::uint32_t)(input_ptr - std::min((pos + 1), input_ptr));
     if (curr_peek) { char_pos -= curr_peek->val.size(); }
     return { file_name, curr_line, char_pos };
   }
 
   static nonstd::optional<lexer> lexer_copy = nonstd::nullopt;
+
+  nonstd::string_view lexer::get_remaining_input() {
+    if (curr_peek) {
+      return { input.c_str() + (input_ptr - curr_peek->val.size()), input.size()
+          - (input_ptr - curr_peek->val.size())};
+    } else {
+      return { input.c_str() + input_ptr, input.size() - input_ptr};
+    }
+  }
 
   void lexer::backup() {
     lexer_copy = { *this };

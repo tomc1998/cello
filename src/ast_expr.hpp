@@ -1,7 +1,9 @@
 #pragma once
 
 #include "ast_type.hpp"
+#include "ast_control.hpp"
 #include "source_label.hpp"
+#include "ast_control.hpp"
 #include <memory>
 #include <nonstd/optional.hpp>
 #include <nonstd/string_view.hpp>
@@ -68,7 +70,7 @@ namespace cello {
   struct expr {
     source_label sl;
     mapbox::util::variant<function_call, bin_op_expr, un_op_expr, variable, int_lit,
-                          float_lit, string_lit, mut_expr, set_expr, let_expr> val;
+                          float_lit, string_lit, mut_expr, set_expr, let_expr, if_expr> val;
     std::string to_string() const;
     /** Build this expression, returning the value of the expression as an LLVM
         value. Returns nullopt on error. */

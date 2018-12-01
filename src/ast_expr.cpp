@@ -4,6 +4,7 @@
 #include "lexer.hpp"
 #include "scope.hpp"
 
+#include <string>
 #include <llvm/ADT/APInt.h>
 #include <llvm/IR/Value.h>
 #include <llvm/ADT/StringRef.h>
@@ -51,6 +52,10 @@ namespace cello {
         }
         l.next();
         return { { sl, bin_op_expr { op, new expr(*lchild), new expr(*rchild) } } };
+      } else if (l.peek()->val == "if") {
+        const auto e = parse_if_expr(l);
+        if (!e) { return nonstd::nullopt; }
+        else { return { { sl, *e } }; };
       } else if (l.peek()->val == "let") {
         l.next();
         ASSERT_TOK_EXISTS_OR_ERROR_AND_RET(l, "variable name");
@@ -83,8 +88,8 @@ namespace cello {
       return { { sl, int_lit { llvm::APInt(64, string_ref, 10) } } };
     }
 
-    report_error(l.get_curr_source_label(),
-                 "Unimplemented expr parsing");
+    report_error(sl, std::string("Unimplemented expr parsing: ") + std::string(l.get_remaining_input()));
+    CONSUME_TO_END_PAREN_OR_ERROR(l);
     return nonstd::nullopt;
   }
 
@@ -96,6 +101,7 @@ namespace cello {
                      [&](int_lit x)       { return std::string("int_lit"); },
                      [&](float_lit x)     { return std::string("float_lit"); },
                      [&](string_lit x)    { return std::string("string_lit"); },
+                     [&](if_expr x)       { return std::string("if_expr"); },
                      [&](mut_expr x)      { return std::string("mut_expr"); },
                      [&](let_expr x)      { return std::string("let_expr"); },
                      [&](set_expr x)      { return std::string("set_expr"); });

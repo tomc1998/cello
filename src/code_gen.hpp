@@ -50,7 +50,6 @@ namespace cello {
         if (l.peek() && l.peek()->val == "fn") {
           const auto function_opt = parse_function(l);
           if (function_opt) {
-
             // Code gen for this function
             std::vector<Type*> arg_types;
             for (const auto &a  : function_opt->args) {

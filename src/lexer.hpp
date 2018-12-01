@@ -31,6 +31,7 @@ namespace cello {
     const nonstd::optional<token> &peek();
     nonstd::optional<token> next();
     source_label get_curr_source_label();
+    nonstd::string_view get_remaining_input();
 
     /** Used for handling errors properly */
     void backup();
