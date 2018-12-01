@@ -43,7 +43,6 @@ namespace cello {
     scope global_scope;
     setup_builtin_types(llvm_ctx, global_scope);
 
-    int counter = 0;
     while(l.peek()) {
       if (l.peek() && l.peek()->val == "(") {
         l.next();
@@ -90,7 +89,6 @@ namespace cello {
             }
           }
         }
-        std::cout << "Function no " << counter++ << std::endl;
       } else {
         report_error(l.get_curr_source_label(),
                      std::string("Unexpected token ") + std::string(l.peek()->val));
