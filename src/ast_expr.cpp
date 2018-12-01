@@ -22,14 +22,20 @@ namespace cello {
     : var(other.var), val(new expr(*other.val)) {};
 
   bool is_bin_op(nonstd::string_view s) {
-    return s == "+" || s == "-" || s == "*" || s == "/";
+    return s == "+" || s == "-" || s == "*" || s == "/" || s == "==" || s == ">"
+    || s == "<" || s == "<=" || s == ">=";
   }
 
   bin_op to_bin_op(nonstd::string_view s) {
-    if (s == "+") { return bin_op::add; }
-    else if (s == "-") { return bin_op::sub; }
-    else if (s == "/") { return bin_op::div; }
-    else if (s == "*") { return bin_op::mul; }
+    if (s == "+")       { return bin_op::add; }
+    else if (s == "-")  { return bin_op::sub; }
+    else if (s == "/")  { return bin_op::div; }
+    else if (s == "*")  { return bin_op::mul; }
+    else if (s == "<")  { return bin_op::lt; }
+    else if (s == ">")  { return bin_op::gt; }
+    else if (s == "<=") { return bin_op::le; }
+    else if (s == ">=") { return bin_op::ge; }
+    else if (s == "==") { return bin_op::eq; }
     assert(false);
   }
 
@@ -115,9 +121,14 @@ namespace cello {
     case bin_op::add: return { b.CreateAdd(*lval, *rval) };
     case bin_op::sub: return { b.CreateSub(*lval, *rval) };
     case bin_op::mul: return { b.CreateMul(*lval, *rval) };
-    case bin_op::div: return { b.CreateSDiv(*lval, *rval) };
+    case bin_op::div: return { b.CreateUDiv(*lval, *rval) };
+    case bin_op::lt: return { b.CreateICmpULT(*lval, *rval) };
+    case bin_op::le: return { b.CreateICmpULE(*lval, *rval) };
+    case bin_op::gt: return { b.CreateICmpUGT(*lval, *rval) };
+    case bin_op::ge: return { b.CreateICmpUGE(*lval, *rval) };
+    case bin_op::eq: return { b.CreateICmpEQ(*lval, *rval) };
+    default: assert(false);
     }
-    assert(false);
   }
 
   nonstd::optional<llvm::Value*> expr::code_gen(scope &s, llvm::IRBuilder<> &b) const {
@@ -125,18 +136,57 @@ namespace cello {
       return val.template get<bin_op_expr>().code_gen(sl, s, b);
     } else if (val.template is<variable>()) {
       const auto &name = val.template get<variable>().val;
-      const auto value = s.symbol_table.find(name);
-      if (value == s.symbol_table.end()) {
+      const auto n_value = s.find_symbol_with_type(name, named_value_type::var);
+      if (!n_value) {
         report_error(sl, std::string("Undefined variable '") + std::string(name) + "'");
         return nonstd::nullopt;
       }
-      return { value->second.v };
+      return { n_value->v };
     } else if (val.template is<let_expr>()) {
       const auto &e = val.template get<let_expr>();
       const auto e_val = e.val->code_gen(s, b);
       if (!e_val) { return nonstd::nullopt; }
       s.symbol_table.insert(std::make_pair(e.var.val, named_value {named_value_type::var, *e_val}));
       return *e_val;
+    } else if (val.template is<if_expr>()) {
+      const auto &e = val.template get<if_expr>();
+      auto &llvm_ctx = b.getContext();
+      const auto prev_block = b.GetInsertBlock();
+      assert(prev_block->getParent());
+      auto true_block = llvm::BasicBlock::Create(llvm_ctx, "true_block", prev_block->getParent());
+      auto false_block = llvm::BasicBlock::Create(llvm_ctx, "false_block");
+      const auto end_block = llvm::BasicBlock::Create(llvm_ctx, "end_block");
+
+      // Generate condition
+      const auto cond_val = e.cond->code_gen(s, b);
+      b.CreateCondBr(*cond_val, true_block, false_block);
+
+      // Generate true / false code
+      // True
+      b.SetInsertPoint(true_block);
+      auto true_scope = s.create_subscope();
+      const auto true_val = e.true_expr->code_gen(true_scope, b);
+      if (!true_val) { return nonstd::nullopt; }
+      b.CreateBr(end_block);
+      true_block = b.GetInsertBlock();
+      // False
+      prev_block->getParent()->getBasicBlockList().push_back(false_block);
+      b.SetInsertPoint(false_block);
+      auto false_scope = s.create_subscope();
+      const auto false_val = e.false_expr->code_gen(false_scope, b);
+      if (!false_val) { return nonstd::nullopt; }
+      b.CreateBr(end_block);
+      false_block = b.GetInsertBlock();
+
+      // 'Flush' all the current generated stuff
+      prev_block->getParent()->getBasicBlockList().push_back(end_block);
+      b.SetInsertPoint(end_block);
+
+      auto phi = b.CreatePHI(llvm::Type::getInt64Ty(llvm_ctx), 2, "iftmp");
+      phi->addIncoming(*true_val, true_block);
+      phi->addIncoming(*false_val, false_block);
+
+      return phi;
     } else if (val.template is<int_lit>()) {
       return { llvm::ConstantInt::get(llvm::Type::getInt64Ty(b.getContext()),
                                       llvm::APInt(val.template get<int_lit>().val)) };

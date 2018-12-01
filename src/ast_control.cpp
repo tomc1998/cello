@@ -32,6 +32,8 @@ namespace cello {
       CONSUME_TO_END_PAREN_OR_ERROR(l);
       return nonstd::nullopt;
     }
+    ASSERT_TOK_EXISTS_OR_ERROR_AND_RET(l, ")");
+    l.next();
     return { { new expr(*cond), new expr(*true_expr), new expr(*false_expr) } };
   }
 

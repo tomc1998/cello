@@ -1,9 +1,14 @@
 
-(fn main void (argc u64 argv (ptr (ptr c_char)))
+(fn main u64 (argc u64 argv (ptr (ptr c_char)))
   (let a u64 3)
   (let b u64 4)
   (let res u64 (+ a b))
-  (if (> b a) res 0)
+  (let res2 u64 (if (> b a) res 0))
+  (let res3 u64 (+ res2 3))
+  (let res4 u64 (if (> res3 res2)
+                  (if (> res3 res) res3 res)
+                  (if (> res2 res) res2 res)))
+  res4
   )
 
 (fn add u64 (a u64 b u64)

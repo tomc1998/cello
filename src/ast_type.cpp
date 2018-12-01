@@ -51,12 +51,12 @@ namespace cello {
   nonstd::optional<llvm::Type*> type_ident::code_gen(const scope& s) const {
     if (val.template is<type_symbol>()) {
       const auto v = val.template get<type_symbol>().val;
-      const auto type_opt = s.get_llvm_type(v);
+      const auto type_opt = s.find_symbol_with_type(v, named_value_type::type);
       if (!type_opt) {
         report_error(sl, std::string("Undefined typename ") + std::string(v));
         return nonstd::nullopt;
       }
-      return type_opt;
+      return { (llvm::Type*) type_opt->v };
     } else if (val.template is<ptr_type>()) {
       const auto type = val.template get<ptr_type>().val->code_gen(s);
       if (!type) { return nonstd::nullopt; }

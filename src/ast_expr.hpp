@@ -19,7 +19,7 @@ namespace cello {
   struct scope;
 
   enum class bin_op {
-    add, sub, div, mul
+    add, sub, div, mul, gt, ge, lt, le, eq
   };
 
   struct function_call {};

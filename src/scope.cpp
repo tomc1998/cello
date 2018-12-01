@@ -2,26 +2,48 @@
 
 
 namespace cello {
-  scope scope::create_subscope() const {
+  scope scope::create_subscope() {
     return { this, {} };
   }
 
-  nonstd::optional<llvm::Type*> scope::get_llvm_type(nonstd::string_view name) const {
+  const named_value* scope::find_symbol_with_type(const nonstd::string_view name,
+                                            const named_value_type type) const {
     const auto res = symbol_table.find(name);
     if (res == symbol_table.end()) {
       if (parent) {
-        return parent->get_llvm_type(name);
+        return parent->find_symbol_with_type(name, type);
       } else {
-        return nonstd::nullopt;
+        return nullptr;
       }
     }
-    const named_value& nv = res->second;
-    if (nv.type == named_value_type::type) {
-      return (llvm::Type*) nv.v;
+    const auto nv = &res->second;
+    if (nv->type == type) {
+      return nv;
     } else if (parent) {
-      return parent->get_llvm_type(name);
+      return parent->find_symbol_with_type(name, type);
     } else {
-      return nonstd::nullopt;
+      return nullptr;
     }
   }
+
+  named_value* scope::find_symbol_with_type(const nonstd::string_view name,
+                                            const named_value_type type) {
+    const auto res = symbol_table.find(name);
+    if (res == symbol_table.end()) {
+      if (parent) {
+        return parent->find_symbol_with_type(name, type);
+      } else {
+        return nullptr;
+      }
+    }
+    auto nv = &res->second;
+    if (nv->type == type) {
+      return nv;
+    } else if (parent) {
+      return parent->find_symbol_with_type(name, type);
+    } else {
+      return nullptr;
+    }
+  }
+
 }

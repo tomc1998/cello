@@ -16,11 +16,15 @@ namespace cello {
   };
 
   struct scope {
-    const scope* parent = nullptr;
+    scope* parent = nullptr;
     std::map<nonstd::string_view, named_value> symbol_table;
-    scope create_subscope() const;
+    scope create_subscope();
 
-    /** Get a type with a name */
-    nonstd::optional<llvm::Type*> get_llvm_type(nonstd::string_view name) const;
+    /** Nullptr if not found */
+    named_value* find_symbol_with_type(const nonstd::string_view name,
+                                       const named_value_type type);
+    /** Nullptr if not found */
+    const named_value* find_symbol_with_type(const nonstd::string_view name,
+                                       const named_value_type type) const;
   };
 }
