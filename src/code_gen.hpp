@@ -93,9 +93,6 @@ namespace cello {
               }
             }
 
-            if (!has_errored) {
-              f->print(errs());
-            }
           }
         }
       } else {
@@ -106,6 +103,7 @@ namespace cello {
     continue_outer:;
     }
 
+    module->print(errs(), nullptr);
     write_to_obj("test_mod.o", module.get());
   }
 };

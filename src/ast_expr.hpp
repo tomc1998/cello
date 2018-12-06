@@ -42,7 +42,10 @@ namespace cello {
     llvm::APInt val;
   };
   struct float_lit {};
-  struct string_lit {};
+  struct string_lit {
+    nonstd::string_view val;
+    llvm::Constant* code_gen(scope &s, llvm::IRBuilder<> &b) const;
+  };
 
   struct mut_expr {
     variable var;

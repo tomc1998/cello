@@ -89,6 +89,11 @@ namespace cello {
       }
     } else if (l.peek()->type == token_type::ident) {
       return { { sl, variable { l.next()->val } } };
+    } else if (l.peek()->type == token_type::string_lit) {
+      // Strip the val of quotes (")
+      const auto val = l.next()->val;
+      nonstd::string_view stripped_val(val.cbegin() + 1, val.size() - 2);
+      return { { sl, string_lit { stripped_val } } };
     } else if (l.peek()->type == token_type::int_lit) {
       const auto val = l.next()->val;
       const auto string_ref = llvm::StringRef(val.begin(), val.size());
@@ -112,6 +117,16 @@ namespace cello {
                      [&](mut_expr x)      { return std::string("mut_expr"); },
                      [&](let_expr x)      { return std::string("let_expr"); },
                      [&](set_expr x)      { return std::string("set_expr"); });
+  }
+
+  llvm::Constant* string_lit::code_gen(scope &s, llvm::IRBuilder<> &b) const {
+    // TODO Generate non-null-terminated string (leave that up to the programmer with \0)
+    auto &llvm_ctx = b.getContext();
+    llvm::Constant* const string_ptr = b.CreateGlobalStringPtr(llvm::StringRef(val.cbegin(), val.size()));
+    llvm::Constant* const string_len = llvm::ConstantInt::get(llvm::Type::getInt32Ty(llvm_ctx), val.size());
+    llvm::Constant* const * vals = new llvm::Constant* const[2] {string_ptr, string_len};
+    return llvm::ConstantStruct::get((llvm::StructType*)builtin_ty_slice_u8.to_llvm_type(llvm_ctx),
+                                     llvm::ArrayRef<llvm::Constant*>(vals, 2));
   }
 
   nonstd::optional<llvm::Value*> bin_op_expr::code_gen(const source_label &sl, scope &s, llvm::IRBuilder<> &b) const {
@@ -193,6 +208,8 @@ namespace cello {
       phi->addIncoming(*false_val, false_block);
 
       return { phi };
+    } else if (val.template is<string_lit>()) {
+      return { val.template get<string_lit>().code_gen(s, b) };
     } else if (val.template is<int_lit>()) {
       return { llvm::ConstantInt::get(llvm::Type::getInt64Ty(b.getContext()),
                                       llvm::APInt(val.template get<int_lit>().val)) };
