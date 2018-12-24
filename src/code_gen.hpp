@@ -31,6 +31,7 @@
 #include "scope.hpp"
 #include "builtin_types.hpp"
 #include "obj_file_gen.hpp"
+#include "struct_decl.hpp"
 
 namespace cello {
 
@@ -98,6 +99,11 @@ namespace cello {
             }
           }
         }
+      } else if (l.peek() && l.peek()->val == "struct") {
+        auto res = parse_struct_type(l);
+        if (!res) { continue; }
+        type t { *res, 0 };
+        global_scope.symbol_table.insert(std::make_pair(res->name, named_value { t }));
       } else {
         report_error(l.get_curr_source_label(),
                      std::string("Unexpected token ") + std::string(l.peek()->val));

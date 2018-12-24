@@ -1,6 +1,6 @@
 #pragma once
 
-#include "ast_type.hpp"
+#include "type.hpp"
 #include "ast_control.hpp"
 #include "source_label.hpp"
 #include "ast_control.hpp"

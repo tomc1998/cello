@@ -4,7 +4,7 @@
 #include "ast_expr.hpp"
 #include "lexer.hpp"
 #include "error.hpp"
-#include "ast_type.hpp"
+#include "type.hpp"
 #include <nonstd/optional.hpp>
 #include <cassert>
 

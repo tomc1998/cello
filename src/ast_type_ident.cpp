@@ -1,8 +1,10 @@
+/** Implements parsing for type idents */
+
 #include <iostream>
 
 #include <llvm/IR/DerivedTypes.h>
 #include "ast_util.hpp"
-#include "ast_type.hpp"
+#include "type.hpp"
 #include "lexer.hpp"
 #include "error.hpp"
 #include "scope.hpp"
@@ -10,6 +12,8 @@
 namespace cello {
   ptr_type::ptr_type(const ptr_type& other) : val(new type_ident(*other.val)) {}
 
+  /** Parses a type identifier, i.e. the identifier used to IDENTIY a type in a
+  function declaration (rather than a type declaration) */
   nonstd::optional<type_ident> parse_type_ident(lexer &l) {
     const auto sl = l.get_curr_source_label();
     if (l.peek() && l.peek()->type == token_type::ident) {

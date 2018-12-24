@@ -1,7 +1,7 @@
 #include <iostream>
 #include <fstream>
 
-#include "ast_type.hpp"
+#include "type.hpp"
 #include "comptime_expr.hpp"
 #include "code_gen.hpp"
 #include "ast_function.hpp"

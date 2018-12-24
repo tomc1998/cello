@@ -1,3 +1,6 @@
+(struct foo
+  a u64
+  b u64)
 
 (fn main u64 (argc u64 argv (ptr (ptr c_char)))
   (let a u64 3)
