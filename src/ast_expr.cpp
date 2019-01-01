@@ -10,6 +10,7 @@
 #include <llvm/ADT/APInt.h>
 #include <llvm/IR/Value.h>
 #include <llvm/ADT/StringRef.h>
+#include <llvm/ADT/APInt.h>
 #include <nonstd/optional.hpp>
 
 namespace cello {
@@ -61,6 +62,29 @@ namespace cello {
     return { { new expr(*target), field_name } };
   }
 
+  nonstd::optional<function_call> parse_function_call(lexer &l) {
+    assert(l.peek()->type == token_type::ident);
+    const auto name = l.next()->val;
+    ASSERT_TOK_EXISTS_OR_ERROR_AND_RET(l, "function arguments");
+    // Parse function arguments here
+    std::vector<expr> args;
+    while ((l.peek() && l.peek()->val != ")") || !l.peek()) {
+      const auto expr_opt = parse_expr(l);
+      if (!expr_opt) {
+        CONSUME_TO_END_PAREN_OR_ERROR(l);
+        return nonstd::nullopt;
+      }
+      args.push_back(*expr_opt);
+    }
+    if (!l.peek() || l.peek()->val != ")") {
+      report_error(l.get_curr_source_label(), "Expected ')'");
+      CONSUME_TO_END_PAREN_OR_ERROR(l);
+      return nonstd::nullopt;
+    }
+    l.next();
+    return { function_call { name, args } };
+  }
+
   nonstd::optional<expr> parse_expr(lexer &l) {
     const auto sl = l.get_curr_source_label();
     ASSERT_TOK_EXISTS_OR_ERROR_AND_RET(l, "expression");
@@ -84,7 +108,6 @@ namespace cello {
         const auto e = parse_field_access_expr(l);
         if (!e) { return nonstd::nullopt; }
         else { return { { sl, *e } }; };
-      }
       } else if (l.peek()->val == "if") {
         const auto e = parse_if_expr(l);
         if (!e) { return nonstd::nullopt; }
@@ -112,6 +135,11 @@ namespace cello {
         }
         l.next();
         return { { sl, let_expr { { name }, *type, new expr(*e) } } };
+      } else if (l.peek()->type == token_type::ident) { // Function call
+        const auto function_call = parse_function_call(l);
+        if (!function_call) { return nonstd::nullopt; }
+        return { { sl, *function_call } };
+      }
     } else if (l.peek()->type == token_type::ident) {
       return { { sl, variable { l.next()->val } } };
     } else if (l.peek()->type == token_type::int_lit) {
@@ -246,6 +274,28 @@ namespace cello {
       phi->addIncoming(*false_val, false_block);
 
       return { phi };
+    } else if (val.template is<function_call>()) {
+      const auto &fc = val.template get<function_call>();
+      // Get function
+      const auto nv = s.find_symbol_with_type(fc.name, named_value_type::function);
+      if (!nv) {
+        report_error(sl, std::string("Unable to locate function with name '")
+                     + std::string(fc.name) + "'");
+        return nonstd::nullopt;
+      }
+      const auto &f = nv->val.template get<function>();
+      const auto llvm_function = f.get_cached_llvm_function();
+      assert(llvm_function);
+
+      // Eval all exprs
+      llvm::Value** args = new llvm::Value*[fc.arg_list.size()];
+      for (unsigned ii = 0; ii < fc.arg_list.size(); ++ii) {
+        const auto expr_opt = fc.arg_list[ii].code_gen(s, b);
+        if (!expr_opt) { return nonstd::nullopt; }
+        args[ii] = *expr_opt;
+      }
+
+      return b.CreateCall(llvm_function, llvm::ArrayRef<llvm::Value*>(args, fc.arg_list.size()));
     } else if (val.template is<int_lit>()) {
       return { llvm::ConstantInt::get(llvm::Type::getInt64Ty(b.getContext()),
                                       llvm::APInt(val.template get<int_lit>().val)) };

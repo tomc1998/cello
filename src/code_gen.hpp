@@ -56,52 +56,14 @@ namespace cello {
       if (l.peek() && l.peek()->val == "(") {
         l.next();
         if (l.peek() && l.peek()->val == "fn") {
-          const auto function_opt = parse_function(l);
+          auto function_opt = parse_function(l);
           if (function_opt) {
-            const auto ft = function_opt->to_llvm_function_type(global_scope, llvm_ctx);
-            if (!ft) { continue; }
+            const auto f = function_opt->to_llvm_function(global_scope, builder, module.get());
+            if (!f) { continue; }
 
-            // Add functino decl to scope
+            // Add function decl to scope
             global_scope.symbol_table.insert(std::make_pair(function_opt->name,
                                                             named_value {*function_opt}));
-
-            // If extern function, early return here - no need to create the
-            // function definition
-            if (function_opt->is_extern()) { continue; }
-
-            const auto llvm_name = StringRef(function_opt->name.begin(), function_opt->name.size());
-            const auto f = Function::Create(*ft, Function::ExternalLinkage, llvm_name, module.get());
-
-            // Create scope and add args to scope
-            auto function_scope = global_scope.create_subscope();
-            for (unsigned ii = 0; ii < function_opt->args.size(); ++ii) {
-              const auto arg_name = function_opt->args[ii].name;
-              const auto arg_type = function_opt->args[ii].type.code_gen(global_scope);
-              if (!arg_type) { continue; }
-              const auto arg_value = f->arg_begin() + ii;
-              const named_value nv { var { *arg_type, arg_value } };
-              function_scope.symbol_table.insert(std::make_pair(arg_name, nv));
-            }
-
-            // Codegen exprs
-            bool has_errored = false;
-            BasicBlock *bb = BasicBlock::Create(llvm_ctx, "entry", f);
-            builder.SetInsertPoint(bb);
-            for (unsigned ii = 0; ii < function_opt->expressions.size(); ++ii) {
-              const auto &e = function_opt->expressions[ii];
-              const auto value_opt = e.code_gen(function_scope, builder);
-              if (!value_opt) { has_errored = true; continue; }
-              if (ii == function_opt->expressions.size() - 1) {
-                builder.CreateRet(*value_opt);
-              }
-            }
-
-            if (!has_errored) {
-              f->print(errs());
-            } else {
-              print_all_errors();
-              assert(false && "CRITICAL ERROR: There were errors in codegen.");
-            }
           }
         }
       } else if (l.peek() && l.peek()->val == "struct") {

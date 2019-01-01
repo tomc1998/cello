@@ -9,6 +9,7 @@
 #include "type.hpp"
 #include <nonstd/optional.hpp>
 #include <cassert>
+#include <llvm/IR/IRBuilder.h>
 
 namespace cello {
   struct arg {
@@ -16,8 +17,19 @@ namespace cello {
     type_ident type;
   };
 
-  struct function {
+  class function {
+  public:
     constexpr static char FLAGS_IS_EXTERN = 1;
+
+    /** Returns true if the function body has already been generated, and
+    calling to_llvm_function will just return the cached function */
+    bool is_function_already_generated() const;
+    bool is_extern() const;
+    nonstd::optional<llvm::Function*>
+    to_llvm_function(scope& s, llvm::IRBuilder<> &b, llvm::Module* module);
+
+    /** asserts is_function_already_generated() */
+    llvm::Function* get_cached_llvm_function() const;
 
     nonstd::string_view name;
     type_ident return_type;
@@ -26,15 +38,20 @@ namespace cello {
     std::vector<expr> expressions;
     /**
        bit 0 - FLAGS_IS_EXTERN
-     */
+    */
     char flags;
 
-    bool is_extern() const;
+    function(nonstd::string_view name, type_ident return_type, std::vector<arg> args,
+             std::vector<expr> expressions, char flags)
+      : name(name), return_type(return_type), args(args),
+        expressions(expressions), flags(flags) {};
+
+  private:
+    llvm::Function* cached_function = nullptr;
+    /** Stored separately just in case we only need to generate a functiontype (?) */
+    llvm::FunctionType* cached_function_type = nullptr;
     nonstd::optional<llvm::FunctionType*>
-    to_llvm_function_type(const scope& s, llvm::LLVMContext &c) const;
-    /** Returns nullptr if is extern */
-    nonstd::optional<llvm::Function*>
-    to_llvm_function(const scope& s, llvm::LLVMContext &c) const;
+    to_llvm_function_type(const scope& s, llvm::LLVMContext &c);
   };
 
   nonstd::optional<arg> parse_arg(lexer &l);

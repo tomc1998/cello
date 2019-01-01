@@ -1,5 +1,10 @@
 #include "ast_function.hpp"
+#include "scope.hpp"
+
+#include <llvm/IR/BasicBlock.h>
+#include <llvm/ADT/StringRef.h>
 #include <llvm/IR/Type.h>
+#include <llvm/IR/Module.h>
 #include <vector>
 
 namespace cello {
@@ -93,15 +98,72 @@ namespace cello {
     // Or together all the flag values
     char flags = is_extern ? function::FLAGS_IS_EXTERN : 0;
 
-    return { { name, *return_type_opt, *arg_list_opt, expr_list, flags } };
+    return { function { name, *return_type_opt, *arg_list_opt, expr_list, flags } };
   };
 
   bool function::is_extern() const {
     return (flags & function::FLAGS_IS_EXTERN) != 0;
   }
 
+  bool function::is_function_already_generated() const {
+    return cached_function;
+  }
+
+  llvm::Function* function::get_cached_llvm_function() const {
+    assert(cached_function);
+    return cached_function;
+  }
+
+  nonstd::optional<llvm::Function*>
+  function::to_llvm_function(scope& s, llvm::IRBuilder<> &b, llvm::Module* module) {
+    auto &llvm_ctx = b.getContext();
+    if (cached_function) { return { cached_function }; }
+    const auto ft_opt = to_llvm_function_type(s, llvm_ctx);
+    if (!ft_opt) { return nonstd::nullopt; }
+    const auto ft = *ft_opt;
+    const auto llvm_name = llvm::StringRef(name.begin(), name.size());
+    cached_function =
+      llvm::Function::Create(ft, llvm::Function::ExternalLinkage,
+                             llvm_name, module);
+    if (is_extern()) { return {cached_function}; }
+
+    // Create scope and add args to scope
+    auto function_scope = s.create_subscope();
+    for (unsigned ii = 0; ii < args.size(); ++ii) {
+      const auto arg_name = args[ii].name;
+      const auto arg_type = args[ii].type.code_gen(s);
+      if (!arg_type) { return nonstd::nullopt; }
+      const auto arg_value = cached_function->arg_begin() + ii;
+      const named_value nv { var { *arg_type, arg_value } };
+      function_scope.symbol_table.insert(std::make_pair(arg_name, nv));
+    }
+
+    // Codegen exprs
+    bool has_errored = false;
+    llvm::BasicBlock *bb = llvm::BasicBlock::Create(llvm_ctx, "entry", cached_function);
+    b.SetInsertPoint(bb);
+    for (unsigned ii = 0; ii < expressions.size(); ++ii) {
+      const auto &e = expressions[ii];
+      const auto value_opt = e.code_gen(function_scope, b);
+      if (!value_opt) { has_errored = true; continue; }
+      if (ii == expressions.size() - 1) {
+        b.CreateRet(*value_opt);
+      }
+    }
+
+    if (!has_errored) {
+      cached_function->print(llvm::errs());
+    } else {
+      print_all_errors();
+      assert(false && "CRITICAL ERROR: There were errors in codegen.");
+    }
+
+    return {cached_function};
+  }
+
   nonstd::optional<llvm::FunctionType*>
-  function::to_llvm_function_type(const scope& s, llvm::LLVMContext &c) const {
+  function::to_llvm_function_type(const scope& s, llvm::LLVMContext &c) {
+    if (cached_function_type) { return { cached_function_type }; }
     // Code gen for this function
     std::vector<llvm::Type*> arg_types;
     for (const auto &a : args) {
@@ -117,9 +179,9 @@ namespace cello {
     }
     const auto resolved_return_type = return_type.code_gen(s);
     if (!resolved_return_type) { return nonstd::nullopt; }
-    const auto ft = llvm::FunctionType::get(resolved_return_type->to_llvm_type(s, c),
+    cached_function_type = llvm::FunctionType::get(resolved_return_type->to_llvm_type(s, c),
                                             arg_types, false);
-    return { ft };
+    return { cached_function_type };
   }
 
 }

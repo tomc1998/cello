@@ -22,8 +22,6 @@ namespace cello {
     add, sub, div, mul, gt, ge, lt, le, eq
   };
 
-  struct function_call {};
-
   struct bin_op_expr {
     bin_op op;
     std::unique_ptr<expr> lchild;
@@ -69,6 +67,11 @@ namespace cello {
     let_expr(const let_expr &other) noexcept;
     let_expr(variable var, type_ident type, expr* val)
       : var(var), type(type), val(val) {};
+  };
+
+  struct function_call {
+    nonstd::string_view name;
+    std::vector<expr> arg_list;
   };
 
   struct set_expr {
