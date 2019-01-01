@@ -38,13 +38,14 @@ namespace cello {
     nonstd::string_view name;
     /** A pointer to the struct data */
     struct_data* data;
+    llvm::Type* to_llvm_type(const scope& s, llvm::LLVMContext &c) const;
   };
 
   struct int_type {
     /** 1, 2, 4, 8 (16?) */
     uint8_t num_bytes;
     bool is_signed;
-    llvm::Type* to_llvm_type(llvm::LLVMContext &c) const;
+    llvm::Type* to_llvm_type(const scope& s, llvm::LLVMContext &c) const;
   };
 
   /** A type in the typesystem */
@@ -52,7 +53,7 @@ namespace cello {
     mapbox::util::variant<int_type, void_type, struct_type> val;
     /** Number of levels of indirection - for int*, this is 1. */
     uint8_t num_ptr;
-    llvm::Type* to_llvm_type(llvm::LLVMContext &c) const;
+    llvm::Type* to_llvm_type(const scope& s, llvm::LLVMContext &c) const;
   };
 
   /** The container for the actual fields of a struct */
@@ -90,6 +91,7 @@ namespace cello {
   struct struct_field {
     nonstd::string_view name;
     type_ident type;
+    llvm::Type* to_llvm_type(const scope& s, llvm::LLVMContext &c) const;
   };
 
   std::ostream& operator<<(std::ostream& o, const struct_type& s);

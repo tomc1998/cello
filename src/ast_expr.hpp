@@ -44,6 +44,16 @@ namespace cello {
   struct float_lit {};
   struct string_lit {};
 
+  /** Access an element on a struct. This is effectively just a GEP. */
+  struct field_access_expr {
+    std::unique_ptr<expr> target;
+    nonstd::string_view field_name;
+    field_access_expr(expr* target, nonstd::string_view field_name)
+      : target(target), field_name(field_name) {}
+    field_access_expr(const field_access_expr& other);
+    nonstd::optional<llvm::Value*> code_gen(scope &s, llvm::IRBuilder<> &b) const;
+  };
+
   struct mut_expr {
     variable var;
     type_ident type;
@@ -70,7 +80,8 @@ namespace cello {
   struct expr {
     source_label sl;
     mapbox::util::variant<function_call, bin_op_expr, un_op_expr, variable, int_lit,
-                          float_lit, string_lit, mut_expr, set_expr, let_expr, if_expr> val;
+                          float_lit, string_lit, mut_expr, set_expr, let_expr,
+                          if_expr, field_access_expr> val;
     std::string to_string() const;
     /** Build this expression, returning the value of the expression as an LLVM
         value. Returns nullopt on error. */

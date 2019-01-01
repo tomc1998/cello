@@ -25,6 +25,7 @@
 #include <llvm/Target/TargetMachine.h>
 #include <llvm/Target/TargetOptions.h>
 
+#include "error.hpp"
 #include "ast_util.hpp"
 #include "ast_function.hpp"
 #include "lexer.hpp"
@@ -57,18 +58,19 @@ namespace cello {
         if (l.peek() && l.peek()->val == "fn") {
           const auto function_opt = parse_function(l);
           if (function_opt) {
-            // Code gen for this function
-            std::vector<Type*> arg_types;
-            for (const auto &a  : function_opt->args) {
-              const auto arg_type = a.type.code_gen(global_scope);
-              if (!arg_type) {goto continue_outer;}
-              arg_types.push_back(arg_type->to_llvm_type(llvm_ctx));
-            }
-            const auto return_type = function_opt->return_type.code_gen(global_scope);
-            if (!return_type) { goto continue_outer; }
-            const auto ft = FunctionType::get(return_type->to_llvm_type(llvm_ctx), arg_types, false);
+            const auto ft = function_opt->to_llvm_function_type(global_scope, llvm_ctx);
+            if (!ft) { continue; }
+
+            // Add functino decl to scope
+            global_scope.symbol_table.insert(std::make_pair(function_opt->name,
+                                                            named_value {*function_opt}));
+
+            // If extern function, early return here - no need to create the
+            // function definition
+            if (function_opt->is_extern()) { continue; }
+
             const auto llvm_name = StringRef(function_opt->name.begin(), function_opt->name.size());
-            const auto f = Function::Create(ft, Function::ExternalLinkage, llvm_name, module.get());
+            const auto f = Function::Create(*ft, Function::ExternalLinkage, llvm_name, module.get());
 
             // Create scope and add args to scope
             auto function_scope = global_scope.create_subscope();
@@ -96,6 +98,9 @@ namespace cello {
 
             if (!has_errored) {
               f->print(errs());
+            } else {
+              print_all_errors();
+              assert(false && "CRITICAL ERROR: There were errors in codegen.");
             }
           }
         }
@@ -109,7 +114,6 @@ namespace cello {
                      std::string("Unexpected token ") + std::string(l.peek()->val));
         return;
       }
-    continue_outer:;
     }
 
     write_to_obj("test_mod.o", module.get());

@@ -2,17 +2,15 @@
   a u64
   b u64)
 
-(fn main u64 (argc u64 argv (ptr (ptr c_char)))
-  (let a u64 3)
-  (let b u64 4)
-  (let res u64 (+ a b))
-  (let res2 u64 (if (> b a) res 0))
-  (let res3 u64 (+ res2 3))
-  (let res4 u64 (if (> res3 res2)
-                  (if (> res3 res) res3 res)
-                  (if (> res2 res) res2 res)))
-  res4
-  )
-
 (fn add u64 (a u64 b u64)
   (+ a b))
+
+(fn extern do_stuff void ())
+
+(fn id foo (f foo) f)
+
+(fn field_a u64 (f foo) (field f a))
+
+(fn field_b u64 (f foo) (field f b))
+
+(fn add_foo u64 (f foo) (+ (field f a) (field f b)))

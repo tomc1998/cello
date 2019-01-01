@@ -5,6 +5,7 @@
 #include "scope.hpp"
 #include "builtin_types.hpp"
 
+#include <iostream>
 #include <string>
 #include <llvm/ADT/APInt.h>
 #include <llvm/IR/Value.h>
@@ -12,9 +13,11 @@
 #include <nonstd/optional.hpp>
 
 namespace cello {
+  /* Copy constructors for stuff that contains a std::unique_ptr<expr> */
   bin_op_expr::bin_op_expr(const bin_op_expr &other)
     : op(other.op), lchild(new expr(*other.lchild)), rchild(new expr(*other.rchild)) {};
-
+  field_access_expr::field_access_expr(const field_access_expr &other)
+    : target(new expr(*other.target)), field_name(other.field_name) {};
   mut_expr::mut_expr(const mut_expr &other)
     : var(other.var), type(other.type), val(new expr(*other.val)) {};
   let_expr::let_expr(const let_expr &other) noexcept
@@ -40,6 +43,24 @@ namespace cello {
     assert(false);
   }
 
+  nonstd::optional<field_access_expr> parse_field_access_expr(lexer &l) {
+    assert(l.next()->val == "field");
+    const auto target = parse_expr(l);
+    if (!target) {
+      CONSUME_TO_END_PAREN_OR_ERROR(l);
+      return nonstd::nullopt;
+    }
+    ASSERT_TOK_EXISTS_OR_ERROR_AND_RET(l, "Field name");
+    const auto field_name = l.next()->val;
+    if (!l.peek() || l.peek()->val != ")") {
+      report_error(l.get_curr_source_label(), "Expected ')'");
+      CONSUME_TO_END_PAREN_OR_ERROR(l);
+      return nonstd::nullopt;
+    }
+    l.next();
+    return { { new expr(*target), field_name } };
+  }
+
   nonstd::optional<expr> parse_expr(lexer &l) {
     const auto sl = l.get_curr_source_label();
     ASSERT_TOK_EXISTS_OR_ERROR_AND_RET(l, "expression");
@@ -59,6 +80,11 @@ namespace cello {
         }
         l.next();
         return { { sl, bin_op_expr { op, new expr(*lchild), new expr(*rchild) } } };
+      } else if (l.peek()->val == "field") {
+        const auto e = parse_field_access_expr(l);
+        if (!e) { return nonstd::nullopt; }
+        else { return { { sl, *e } }; };
+      }
       } else if (l.peek()->val == "if") {
         const auto e = parse_if_expr(l);
         if (!e) { return nonstd::nullopt; }
@@ -86,7 +112,6 @@ namespace cello {
         }
         l.next();
         return { { sl, let_expr { { name }, *type, new expr(*e) } } };
-      }
     } else if (l.peek()->type == token_type::ident) {
       return { { sl, variable { l.next()->val } } };
     } else if (l.peek()->type == token_type::int_lit) {
@@ -101,17 +126,18 @@ namespace cello {
   }
 
   std::string expr::to_string() const {
-    return val.match([&](function_call x) { return std::string("function_call"); },
-                     [&](bin_op_expr x)   { return std::string("bin_op_expr"); },
-                     [&](un_op_expr x)    { return std::string("un_op_expr"); },
-                     [&](variable x)      { return std::string("variable(") + std::string(x.val) + ")"; },
-                     [&](int_lit x)       { return std::string("int_lit"); },
-                     [&](float_lit x)     { return std::string("float_lit"); },
-                     [&](string_lit x)    { return std::string("string_lit"); },
-                     [&](if_expr x)       { return std::string("if_expr"); },
-                     [&](mut_expr x)      { return std::string("mut_expr"); },
-                     [&](let_expr x)      { return std::string("let_expr"); },
-                     [&](set_expr x)      { return std::string("set_expr"); });
+    return val.match([&](function_call x)     { return std::string("function_call"); },
+                     [&](bin_op_expr x)       { return std::string("bin_op_expr"); },
+                     [&](un_op_expr x)        { return std::string("un_op_expr"); },
+                     [&](variable x)          { return std::string("variable(") + std::string(x.val) + ")"; },
+                     [&](int_lit x)           { return std::string("int_lit"); },
+                     [&](float_lit x)         { return std::string("float_lit"); },
+                     [&](string_lit x)        { return std::string("string_lit"); },
+                     [&](if_expr x)           { return std::string("if_expr"); },
+                     [&](mut_expr x)          { return std::string("mut_expr"); },
+                     [&](let_expr x)          { return std::string("let_expr"); },
+                     [&](set_expr x)          { return std::string("set_expr"); },
+                     [&](field_access_expr x) { return std::string("field_access_expr"); });
   }
 
   nonstd::optional<llvm::Value*> bin_op_expr::code_gen(const source_label &sl, scope &s, llvm::IRBuilder<> &b) const {
@@ -130,6 +156,31 @@ namespace cello {
     case bin_op::eq: return { b.CreateICmpEQ(*lval, *rval) };
     default: assert(false);
     }
+  }
+
+  nonstd::optional<llvm::Value*> field_access_expr::code_gen(scope &s, llvm::IRBuilder<> &b) const {
+    assert(target->val.template is<variable>() && "We only support field access on variables");
+    // First, get the target type
+    const auto target_type = target->get_type(s);
+    assert(target_type);
+    assert(target_type->val.template is<struct_type>());
+    // get struct data
+    const auto data = target_type->val.template get<struct_type>().data;
+    assert(data);
+    // Find field
+    int found_field = -1;
+    for (int ii = 0; ii < (int)data->fields.size(); ++ii) {
+      if (data->fields[ii].name == field_name) {
+        found_field = ii;
+        break;
+      }
+    }
+    assert(found_field >= 0 && "Can't find field");
+    // Codegen the target so we have a llvm::Value* to index
+    auto target_llvm_val = target->code_gen(s, b);
+    if (!target_llvm_val) { return nonstd::nullopt; }
+    const auto gep = b.CreateStructGEP(*target_llvm_val, found_field);
+    return { b.CreateLoad(gep) };
   }
 
   nonstd::optional<llvm::Value*> expr::code_gen(scope &s, llvm::IRBuilder<> &b) const {
@@ -151,6 +202,8 @@ namespace cello {
       if (!e_type) { return nonstd::nullopt; }
       s.symbol_table.insert(std::make_pair(e.var.val, named_value { var { *e_type, *e_val } }));
       return *e_val;
+    } else if (val.template is<field_access_expr>()) {
+      return val.template get<field_access_expr>().code_gen(s, b);
     } else if (val.template is<if_expr>()) {
       const auto &e = val.template get<if_expr>();
       auto &llvm_ctx = b.getContext();
@@ -188,7 +241,7 @@ namespace cello {
       auto this_type = get_type(s);
       if (!this_type) { return nonstd::nullopt; }
 
-      auto phi = b.CreatePHI(this_type->to_llvm_type(llvm_ctx), 2, "iftmp");
+      auto phi = b.CreatePHI(this_type->to_llvm_type(s, llvm_ctx), 2, "iftmp");
       phi->addIncoming(*true_val, true_block);
       phi->addIncoming(*false_val, false_block);
 
