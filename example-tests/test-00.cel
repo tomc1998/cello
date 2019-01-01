@@ -21,3 +21,8 @@
 
 (fn cello_print_stuff void ()
   (printf c"Hello %d\n" 3))
+
+(fn test_mut void ()
+  (mut x u64 3)
+  (set x 4)
+  (printf c"TEST MUT (EXPECT 4): %d\n" x))

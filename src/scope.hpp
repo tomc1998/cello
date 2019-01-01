@@ -15,9 +15,18 @@ namespace cello {
   enum class named_value_type { type, var, function };
 
   struct var {
+    static constexpr char FLAGS_MUT = 0b00000001;
     /** The type of this variable */
     type var_type;
+    /** If is_mutable(), this will be a pointer (to a stack variable), and will
+        need to be loaded */
     llvm::Value* val;
+    /**
+       Bit 0 - FLAGS_MUT
+     */
+    char flags = 0;
+
+    inline bool is_mutable() const { return (flags & FLAGS_MUT) != 0; }
   };
 
   struct named_value {

@@ -113,8 +113,8 @@ namespace cello {
         const auto e = parse_if_expr(l);
         if (!e) { return nonstd::nullopt; }
         else { return { { sl, *e } }; };
-      } else if (l.peek()->val == "let") {
-        l.next();
+      } else if (l.peek()->val == "let" || l.peek()->val == "mut") {
+        const auto expr_type = l.next()->val;
         ASSERT_TOK_EXISTS_OR_ERROR_AND_RET(l, "variable name");
         const auto name = l.next()->val;
         ASSERT_TOK_EXISTS_OR_ERROR_AND_RET(l, "type");
@@ -135,7 +135,33 @@ namespace cello {
           return nonstd::nullopt;
         }
         l.next();
-        return { { sl, let_expr { { name }, *type, new expr(*e) } } };
+        if (expr_type == "let") { return { { sl, let_expr { { name }, *type, new expr(*e) } } }; }
+        if (expr_type == "mut") { return { { sl, mut_expr { { name }, *type, new expr(*e) } } }; }
+        assert(false && "Unreachable");
+      } else if (l.peek()->val == "set") {
+        l.next();
+        ASSERT_TOK_EXISTS_OR_ERROR_AND_RET(l, "variable name");
+        const auto name = l.next()->val;
+        ASSERT_TOK_EXISTS_OR_ERROR_AND_RET(l, "expr value");
+        if (l.peek()->val == ")") {
+          report_error(l.get_curr_source_label(),
+                       "Expected value for set expr, found (set <varname>) "
+                       "(instead of (set <varname> <expr>))");
+          CONSUME_TO_END_PAREN_OR_ERROR(l);
+          return nonstd::nullopt;
+        }
+        const auto e = parse_expr(l);
+        if (!e) {
+          CONSUME_TO_END_PAREN_OR_ERROR(l);
+          return nonstd::nullopt;
+        }
+        if (!l.peek() || l.peek()->val != ")") {
+          report_error(l.get_curr_source_label(), "Expected ')'");
+          CONSUME_TO_END_PAREN_OR_ERROR(l);
+          return nonstd::nullopt;
+        }
+        l.next();
+        return { { sl, set_expr { variable { name }, { new expr(*e) } } } };
       } else if (l.peek()->type == token_type::ident) { // Function call
         const auto function_call = parse_function_call(l);
         if (!function_call) { return nonstd::nullopt; }
@@ -232,30 +258,60 @@ namespace cello {
     return { b.CreateLoad(gep) };
   }
 
+  nonstd::optional<llvm::Value*> variable::code_gen(const source_label &sl, scope &s,
+                                                    llvm::IRBuilder<> &b, bool deref_mut) const {
+    const auto n_value = s.find_symbol_with_type(val, named_value_type::var);
+    if (!n_value) {
+      report_error(sl, std::string("Undefined variable '") + std::string(val) + "'");
+      return nonstd::nullopt;
+    }
+    const auto &v = n_value->val.template get<var>();
+    if (deref_mut) {
+      return { v.is_mutable() ? b.CreateLoad(v.val) : v.val };
+    } else {
+      assert(v.is_mutable());
+      return { v.val };
+    }
+  }
+
   nonstd::optional<llvm::Value*> expr::code_gen(scope &s, llvm::IRBuilder<> &b) const {
+    auto &llvm_ctx = b.getContext();
     if (val.template is<bin_op_expr>()) {
       return val.template get<bin_op_expr>().code_gen(sl, s, b);
     } else if (val.template is<variable>()) {
-      const auto &name = val.template get<variable>().val;
-      const auto n_value = s.find_symbol_with_type(name, named_value_type::var);
-      if (!n_value) {
-        report_error(sl, std::string("Undefined variable '") + std::string(name) + "'");
-        return nonstd::nullopt;
-      }
-      return { n_value->val.template get<var>().val };
+      return val.template get<variable>().code_gen(sl, s, b);
     } else if (val.template is<let_expr>()) {
       const auto &e = val.template get<let_expr>();
       const auto e_val = e.val->code_gen(s, b);
       if (!e_val) { return nonstd::nullopt; }
       const auto e_type = e.type.code_gen(s);
       if (!e_type) { return nonstd::nullopt; }
-      s.symbol_table.insert(std::make_pair(e.var.val, named_value { var { *e_type, *e_val } }));
+      s.symbol_table.insert(std::make_pair(e.var.val, named_value { var { *e_type, *e_val, 0 } }));
       return *e_val;
+    } else if (val.template is<mut_expr>()) {
+      const auto &e = val.template get<mut_expr>();
+      const auto e_val = e.val->code_gen(s, b);
+      if (!e_val) { return nonstd::nullopt; }
+      const auto e_type = e.type.code_gen(s);
+      if (!e_type) { return nonstd::nullopt; }
+      // Allocate space
+      const auto alloca = b.CreateAlloca(e_type->to_llvm_type(s, llvm_ctx));
+      // Store location in symbol table
+      s.symbol_table.insert(std::make_pair(e.var.val, named_value {
+            var { *e_type, alloca, var::FLAGS_MUT } }));
+      b.CreateStore(*e_val, alloca);
+      return alloca;
+    } else if (val.template is<set_expr>()) {
+      const auto &e = val.template get<set_expr>();
+      // Find the var & gen the expr value
+      const auto e_val = e.val->code_gen(s, b);
+      const auto e_var = e.var.code_gen(sl, s, b, false);
+      if (!e_val || !e_var) { return nonstd::nullopt; }
+      return b.CreateStore(*e_val, *e_var);
     } else if (val.template is<field_access_expr>()) {
       return val.template get<field_access_expr>().code_gen(s, b);
     } else if (val.template is<if_expr>()) {
       const auto &e = val.template get<if_expr>();
-      auto &llvm_ctx = b.getContext();
       const auto prev_block = b.GetInsertBlock();
       assert(prev_block->getParent());
       auto true_block = llvm::BasicBlock::Create(llvm_ctx, "true_block", prev_block->getParent());

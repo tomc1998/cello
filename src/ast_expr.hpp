@@ -35,6 +35,16 @@ namespace cello {
   struct un_op_expr {};
   struct variable {
     nonstd::string_view val;
+    /**
+       @param deref_mut=true - If set to false, don't generate a load
+       instruction for mutable variables. This is useful when querying the
+       variable location.
+       This function will assert if deref_mut is false, but the variable is
+       immutable (as the chances are this is a logic error on the compiler's
+       part).
+     */
+    nonstd::optional<llvm::Value*> code_gen(const source_label& sl, scope &s,
+                                            llvm::IRBuilder<> &b, bool deref_mut=true) const;
   };
   struct int_lit {
     llvm::APInt val;
@@ -66,6 +76,8 @@ namespace cello {
     type_ident type;
     std::unique_ptr<expr> val;
     mut_expr(const mut_expr &other);
+    mut_expr(variable var, type_ident type, expr* val)
+      : var(var), type(type), val(val) {};
   };
 
   /** Declare an immutable value */
@@ -87,6 +99,8 @@ namespace cello {
     variable var;
     std::unique_ptr<expr> val;
     set_expr(const set_expr &other) noexcept;
+    set_expr(variable var, expr* val)
+      : var(var), val(val) {};
   };
 
   struct expr {
