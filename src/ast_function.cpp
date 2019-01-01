@@ -17,28 +17,6 @@ namespace cello {
     return { { arg_name, *arg_type } };
   }
 
-  nonstd::optional<std::vector<arg>> parse_arg_list(lexer &l) {
-    ASSERT_TOK_VAL_OR_ERROR_AND_RET(l, "(");
-    l.next();
-    std::vector<arg> args;
-    while ((l.peek() && l.peek()->val != ")") || !l.peek()) {
-      const auto arg_opt = parse_arg(l);
-      if (!arg_opt) {
-        CONSUME_TO_END_PAREN_OR_ERROR(l);
-        return nonstd::nullopt;
-      }
-      args.push_back(*arg_opt);
-    }
-
-    if (!l.peek() || l.peek()->val != ")") {
-      report_error(l.get_curr_source_label(), "Expected ')'");
-      CONSUME_TO_END_PAREN_OR_ERROR(l);
-      return nonstd::nullopt;
-    }
-    l.next();
-    return args;
-  }
-
   nonstd::optional<function> parse_function(lexer &l) {
     if (!l.peek() || l.peek()->val != "fn") {
       report_error(l.get_curr_source_label(), "Expected 'fn'");
@@ -48,6 +26,7 @@ namespace cello {
     l.next();
     ASSERT_TOK_EXISTS_OR_ERROR_AND_RET(l, "function declaration");
     bool is_extern = false;
+    bool is_var_args = false;
     if (l.peek()->val == "extern") {
       is_extern = true;
       l.next();
@@ -63,11 +42,36 @@ namespace cello {
       CONSUME_TO_END_PAREN_OR_ERROR(l);
       return nonstd::nullopt;
     }
-    const auto arg_list_opt = parse_arg_list(l);
-    if (!arg_list_opt) {
+
+    // Parse arg list
+    ASSERT_TOK_VAL_OR_ERROR_AND_RET(l, "(");
+    l.next();
+    std::vector<arg> args;
+    while ((l.peek() && l.peek()->val != ")") || !l.peek()) {
+      if (l.peek()->val == "&rest") {
+        if (!is_extern) {
+          report_error(l.get_curr_source_label(), "non-extern varargs function not supported (yet)");
+          CONSUME_TO_END_PAREN_OR_ERROR(l);
+          return nonstd::nullopt;
+        }
+        is_var_args = true;
+        l.next();
+        break;
+      }
+      const auto arg_opt = parse_arg(l);
+      if (!arg_opt) {
+        CONSUME_TO_END_PAREN_OR_ERROR(l);
+        return nonstd::nullopt;
+      }
+      args.push_back(*arg_opt);
+    }
+
+    if (!l.peek() || l.peek()->val != ")") {
+      report_error(l.get_curr_source_label(), "Expected ')'");
       CONSUME_TO_END_PAREN_OR_ERROR(l);
       return nonstd::nullopt;
     }
+    l.next();
 
     std::vector<expr> expr_list;
     const auto sl = l.get_curr_source_label();
@@ -96,10 +100,16 @@ namespace cello {
     }
 
     // Or together all the flag values
-    char flags = is_extern ? function::FLAGS_IS_EXTERN : 0;
+    char flags = 0
+      | (is_extern ? function::FLAGS_IS_EXTERN : 0)
+      | (is_var_args ? function::FLAGS_IS_VAR_ARGS : 0);
 
-    return { function { name, *return_type_opt, *arg_list_opt, expr_list, flags } };
+    return { function { name, *return_type_opt, args, expr_list, flags } };
   };
+
+  bool function::is_var_args() const {
+    return (flags & function::FLAGS_IS_VAR_ARGS) != 0;
+  }
 
   bool function::is_extern() const {
     return (flags & function::FLAGS_IS_EXTERN) != 0;
@@ -180,7 +190,7 @@ namespace cello {
     const auto resolved_return_type = return_type.code_gen(s);
     if (!resolved_return_type) { return nonstd::nullopt; }
     cached_function_type = llvm::FunctionType::get(resolved_return_type->to_llvm_type(s, c),
-                                            arg_types, false);
+                                                   arg_types, is_var_args());
     return { cached_function_type };
   }
 

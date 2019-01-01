@@ -6,11 +6,12 @@
 #include <regex>
 #include <exception>
 
-std::regex r_ident = std::regex("[A-Za-z<>=\\/,\\.\\+\\*#'`@_\\-][0-9A-Za-z\\/,\\.\\+\\*#'`@_\\-]*");
+std::regex r_ident = std::regex("[A-Za-z&<>=\\/,\\.\\+\\*#'`@_\\-][0-9A-Za-z&\\/,\\.\\+\\*#'`@_\\-]*");
 std::regex r_punc = std::regex("(\\(|\\))");
 std::regex r_float_lit = std::regex("[-+]?[0-9]\\.[0-9]");
 std::regex r_int_lit = std::regex("(0b|0x)?[0-9]+");
 std::regex r_string_lit = std::regex("\"(\\.|[^\"\\\\])*\"");
+std::regex r_c_string_lit = std::regex("c\"(\\.|[^\"\\\\])*\"");
 std::regex r_comment = std::regex(";.*$");
 
 
@@ -39,6 +40,9 @@ namespace cello {
       input_ptr += m.length();
     } else if (std::regex_search(start, end, m, r_punc, std::regex_constants::match_continuous)) {
       tok = token { nonstd::string_view (start, m.length()), token_type::punc };
+      input_ptr += m.length();
+    } else if (std::regex_search(start, end, m, r_c_string_lit, std::regex_constants::match_continuous)) {
+      tok = token { nonstd::string_view (start, m.length()), token_type::c_string_lit };
       input_ptr += m.length();
     } else if (std::regex_search(start, end, m, r_string_lit, std::regex_constants::match_continuous)) {
       tok = token { nonstd::string_view (start, m.length()), token_type::string_lit };

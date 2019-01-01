@@ -142,6 +142,10 @@ namespace cello {
       }
     } else if (l.peek()->type == token_type::ident) {
       return { { sl, variable { l.next()->val } } };
+    } else if (l.peek()->type == token_type::c_string_lit) {
+      const auto string_tok = *l.next();
+      return { { sl, c_string_lit { nonstd::string_view(string_tok.val.begin() + 2,
+                                                        string_tok.val.size() - 3) } } };
     } else if (l.peek()->type == token_type::int_lit) {
       const auto val = l.next()->val;
       const auto string_ref = llvm::StringRef(val.begin(), val.size());
@@ -161,6 +165,7 @@ namespace cello {
                      [&](int_lit x)           { return std::string("int_lit"); },
                      [&](float_lit x)         { return std::string("float_lit"); },
                      [&](string_lit x)        { return std::string("string_lit"); },
+                     [&](c_string_lit x)      { return std::string("c_string_lit"); },
                      [&](if_expr x)           { return std::string("if_expr"); },
                      [&](mut_expr x)          { return std::string("mut_expr"); },
                      [&](let_expr x)          { return std::string("let_expr"); },
@@ -299,6 +304,9 @@ namespace cello {
     } else if (val.template is<int_lit>()) {
       return { llvm::ConstantInt::get(llvm::Type::getInt64Ty(b.getContext()),
                                       llvm::APInt(val.template get<int_lit>().val)) };
+    } else if (val.template is<c_string_lit>()) {
+      const auto &s = val.template get<c_string_lit>().val;
+      return b.CreateGlobalStringPtr(llvm::StringRef(s.begin(), s.size()));
     }
     report_error(sl, std::string("Code gen not implemented for this type of expr: ") + to_string());
     return nonstd::nullopt;

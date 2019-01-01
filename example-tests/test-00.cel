@@ -2,6 +2,8 @@
   a u64
   b u64)
 
+(fn extern printf void (fmt (ptr c_char) &rest))
+
 (fn extern c_do_stuff void ())
 
 (fn add u64 (a u64 b u64)
@@ -14,3 +16,6 @@
 (fn add_foo u64 (f foo) (add (field_a f) (field_b f)))
 
 (fn cello_do_stuff void () (c_do_stuff))
+
+(fn cello_print_stuff void ()
+  (printf c"Hello %d" 3))

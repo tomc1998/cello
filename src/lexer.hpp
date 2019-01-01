@@ -8,7 +8,7 @@
 
 namespace cello {
   enum class token_type {
-    float_lit, int_lit, string_lit, punc, ident, comment
+    float_lit, int_lit, string_lit, c_string_lit, punc, ident, comment
   };
 
   struct token {

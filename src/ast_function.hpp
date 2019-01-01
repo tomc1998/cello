@@ -19,12 +19,14 @@ namespace cello {
 
   class function {
   public:
-    constexpr static char FLAGS_IS_EXTERN = 1;
+    constexpr static char FLAGS_IS_EXTERN   = 0b00000001;
+    constexpr static char FLAGS_IS_VAR_ARGS = 0b00000010;
 
     /** Returns true if the function body has already been generated, and
     calling to_llvm_function will just return the cached function */
     bool is_function_already_generated() const;
     bool is_extern() const;
+    bool is_var_args() const;
     nonstd::optional<llvm::Function*>
     to_llvm_function(scope& s, llvm::IRBuilder<> &b, llvm::Module* module);
 
@@ -38,6 +40,7 @@ namespace cello {
     std::vector<expr> expressions;
     /**
        bit 0 - FLAGS_IS_EXTERN
+       bit 1 - FLAGS_IS_VAR_ARGS
     */
     char flags;
 
