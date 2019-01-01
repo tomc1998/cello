@@ -4,6 +4,7 @@
 #include "lexer.hpp"
 #include "scope.hpp"
 #include "builtin_types.hpp"
+#include "string_lit_parse.hpp"
 
 #include <iostream>
 #include <string>
@@ -144,8 +145,8 @@ namespace cello {
       return { { sl, variable { l.next()->val } } };
     } else if (l.peek()->type == token_type::c_string_lit) {
       const auto string_tok = *l.next();
-      return { { sl, c_string_lit { nonstd::string_view(string_tok.val.begin() + 2,
-                                                        string_tok.val.size() - 3) } } };
+      const auto s = nonstd::string_view(string_tok.val.begin() + 2, string_tok.val.size() - 3);
+      return { { sl, c_string_lit { *escape_all(s) } } };
     } else if (l.peek()->type == token_type::int_lit) {
       const auto val = l.next()->val;
       const auto string_ref = llvm::StringRef(val.begin(), val.size());

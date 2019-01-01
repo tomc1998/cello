@@ -18,4 +18,4 @@
 (fn cello_do_stuff void () (c_do_stuff))
 
 (fn cello_print_stuff void ()
-  (printf c"Hello %d" 3))
+  (printf c"Hello %d\n" 3))
