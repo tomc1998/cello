@@ -15,6 +15,8 @@
 
 #include "type.hpp"
 #include "source_label.hpp"
+#include <utility>
+#include <llvm/IR/DerivedTypes.h>
 
 namespace llvm {
   class Type;
@@ -54,6 +56,8 @@ namespace cello {
     /** Number of levels of indirection - for int*, this is 1. */
     uint8_t num_ptr;
     llvm::Type* to_llvm_type(const scope& s, llvm::LLVMContext &c) const;
+    /** CLone this type, increment num_ptr */
+    type ptr(int levels) const;
   };
 
   /** The container for the actual fields of a struct */
@@ -84,6 +88,8 @@ namespace cello {
     mapbox::util::variant<ptr_type, type_symbol, type_function_call> val;
     std::string to_string() const;
     nonstd::optional<type> code_gen(const scope& s) const;
+    /** Clone this, surroud with pointer, return. source label will be null. */
+    type_ident ptr() const;
   };
 
   nonstd::optional<type_ident> parse_type_ident(lexer &l);

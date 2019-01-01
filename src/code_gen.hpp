@@ -78,6 +78,7 @@ namespace cello {
       }
     }
 
+    module->print(errs(), nullptr);
     write_to_obj("test_mod.o", module.get());
   }
 };

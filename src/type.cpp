@@ -11,7 +11,6 @@ namespace cello {
     return llvm::Type::getIntNTy(c, num_bytes * 8);
   }
 
-
   llvm::Type* struct_type::to_llvm_type(const scope& s, llvm::LLVMContext &c) const {
     assert(data);
     std::vector<llvm::Type*> fields;
@@ -47,5 +46,16 @@ namespace cello {
     } else {
       return o << "NO ATTACHED DATA}";
     }
+  }
+
+  type type::ptr(int levels) const {
+    assert (levels > 0);
+    type ret(*this);
+    ret.num_ptr += levels;
+    return ret;
+  }
+
+  type_ident type_ident::ptr() const {
+    return { source_label(), ptr_type(new type_ident(*this)) };
   }
 }

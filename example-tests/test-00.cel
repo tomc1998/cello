@@ -2,7 +2,9 @@
   a u64
   b u64)
 
-(fn extern printf void (fmt (ptr c_char) &rest))
+(fn get_string_slice __slice_u8 () "Hello")
+
+(fn extern printf void (fmt (ptr u8) &rest))
 
 (fn extern c_do_stuff void ())
 

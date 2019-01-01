@@ -40,7 +40,12 @@ namespace cello {
     llvm::APInt val;
   };
   struct float_lit {};
-  struct string_lit {};
+
+  struct string_lit {
+    nonstd::string_view val;
+    llvm::Constant* code_gen(scope &s, llvm::IRBuilder<> &b) const;
+  };
+
   /** Just a string literal with 'c' at the end to indicate this is a c string */
   struct c_string_lit {
     nonstd::string_view val;

@@ -10,7 +10,7 @@ std::regex r_ident = std::regex("[A-Za-z&<>=\\/,\\.\\+\\*#'`@_\\-][0-9A-Za-z&\\/
 std::regex r_punc = std::regex("(\\(|\\))");
 std::regex r_float_lit = std::regex("[-+]?[0-9]\\.[0-9]");
 std::regex r_int_lit = std::regex("(0b|0x)?[0-9]+");
-std::regex r_string_lit = std::regex("\"(\\.|[^\"\\\\])*\"");
+std::regex r_string_lit = std::regex("\"(\\\\.|[^\"\\\\])*\"");
 std::regex r_c_string_lit = std::regex("c\"(\\\\.|[^\"\\\\])*\"");
 std::regex r_comment = std::regex(";.*$");
 

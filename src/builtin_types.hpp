@@ -11,9 +11,16 @@ namespace cello {
 
   struct scope;
 
-  static type builtin_ty_u64    = { int_type { 8, false }, 0 };
-  static type builtin_ty_c_char = { int_type { 1, false }, 0 };
-  static type builtin_ty_void   = { void_type { } };
+  // Special types
+  extern type builtin_ty_void;
+
+  // Int types
+  extern type builtin_ty_u64;
+  extern type builtin_ty_u32;
+  extern type builtin_ty_u8;
+
+  // Struct types
+  extern type builtin_ty_slice_u8;
 
   /** Setup builtin types in the scope */
   void setup_builtin_types(llvm::LLVMContext &c, scope& s);
