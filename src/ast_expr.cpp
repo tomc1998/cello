@@ -109,6 +109,10 @@ namespace cello {
         const auto e = parse_field_access_expr(l);
         if (!e) { return nonstd::nullopt; }
         else { return { { sl, *e } }; };
+      } else if (l.peek()->val == "while") {
+        const auto e = parse_while_expr(l);
+        if (!e) { return nonstd::nullopt; }
+        else { return { { sl, *e } }; };
       } else if (l.peek()->val == "if") {
         const auto e = parse_if_expr(l);
         if (!e) { return nonstd::nullopt; }
@@ -199,6 +203,7 @@ namespace cello {
                      [&](string_lit x)        { return std::string("string_lit"); },
                      [&](c_string_lit x)      { return std::string("c_string_lit"); },
                      [&](if_expr x)           { return std::string("if_expr"); },
+                     [&](while_expr x)        { return std::string("while_expr"); },
                      [&](mut_expr x)          { return std::string("mut_expr"); },
                      [&](let_expr x)          { return std::string("let_expr"); },
                      [&](set_expr x)          { return std::string("set_expr"); },
@@ -310,6 +315,30 @@ namespace cello {
       return b.CreateStore(*e_val, *e_var);
     } else if (val.template is<field_access_expr>()) {
       return val.template get<field_access_expr>().code_gen(s, b);
+    } else if (val.template is<while_expr>()) {
+      const auto &e = val.template get<while_expr>();
+      const auto prev_block = b.GetInsertBlock();
+      assert(prev_block->getParent());
+      auto body_cond_block = llvm::BasicBlock::Create(llvm_ctx, "loop_body_cond_block",
+                                                      prev_block->getParent());
+      auto body_block = llvm::BasicBlock::Create(llvm_ctx, "loop_body_block");
+      auto end_block = llvm::BasicBlock::Create(llvm_ctx, "end_block");
+      auto body_scope = s.create_subscope();
+      b.CreateBr(body_cond_block);
+      b.SetInsertPoint(body_cond_block);
+      // Generate condition
+      const auto cond_val = e.cond->code_gen(s, b);
+      b.CreateCondBr(*cond_val, body_block, end_block);
+      prev_block->getParent()->getBasicBlockList().push_back(body_block);
+      b.SetInsertPoint(body_block);
+      for (const auto &body_expr : e.body) {
+        body_expr.code_gen(body_scope, b);
+      }
+      b.CreateBr(body_cond_block);
+      prev_block->getParent()->getBasicBlockList().push_back(end_block);
+      b.SetInsertPoint(end_block);
+      return { llvm::Constant::getNullValue(llvm::Type::getDoubleTy(llvm_ctx)) };
+
     } else if (val.template is<if_expr>()) {
       const auto &e = val.template get<if_expr>();
       const auto prev_block = b.GetInsertBlock();
