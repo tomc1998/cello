@@ -10,7 +10,7 @@
 using namespace cello;
 
 int main(int argc, char** argv) {
-  auto file_name = "example-tests/test-00.cel";
+  auto file_name = "example-tests/glfw-test.cel";
   std::ifstream t(file_name);
   std::string file((std::istreambuf_iterator<char>(t)),
                    std::istreambuf_iterator<char>());

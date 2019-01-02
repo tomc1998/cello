@@ -6,7 +6,7 @@
 #include <regex>
 #include <exception>
 
-std::regex r_ident = std::regex("[A-Za-z&<>=\\/,\\.\\+\\*#'`@_\\-][0-9A-Za-z&\\/,\\.\\+\\*#'`@_\\-]*");
+std::regex r_ident = std::regex("[A-Za-z&<>=\\/,\\.\\+\\*#'`@_\\-][0-9A-Za-z&<>=\\/,\\.\\+\\*#'`@_\\-]*");
 std::regex r_punc = std::regex("(\\(|\\))");
 std::regex r_float_lit = std::regex("[-+]?[0-9]\\.[0-9]");
 std::regex r_int_lit = std::regex("(0b|0x)?[0-9]+");

@@ -291,8 +291,12 @@ namespace cello {
       if (!e_val) { return nonstd::nullopt; }
       const auto e_type = e.type.code_gen(s);
       if (!e_type) { return nonstd::nullopt; }
-      s.symbol_table.insert(std::make_pair(e.var.val, named_value { var { *e_type, *e_val, 0 } }));
-      return *e_val;
+      assert(e_type.has_value());
+      assert(e_val.has_value());
+      const auto e_type_unwrap = *e_type;
+      const auto e_val_unwrap = *e_val;
+      s.symbol_table.insert(std::make_pair(e.var.val, named_value { var { e_type_unwrap, e_val_unwrap, 0 } }));
+      return e_val_unwrap;
     } else if (val.template is<mut_expr>()) {
       const auto &e = val.template get<mut_expr>();
       const auto e_val = e.val->code_gen(s, b);
