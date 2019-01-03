@@ -30,6 +30,7 @@ namespace cello {
     bin_op_expr(bin_op op, expr* lchild,
                 expr* rchild) : op(op), lchild(lchild), rchild(rchild) {}
     nonstd::optional<llvm::Value*> code_gen(const source_label &sl, scope &s, llvm::IRBuilder<> &b) const;
+    bool is_bool_expr() const;
   };
 
   struct un_op_expr {};
@@ -109,9 +110,16 @@ namespace cello {
                           float_lit, string_lit, c_string_lit, mut_expr, set_expr, let_expr,
                           while_expr, if_expr, field_access_expr> val;
     std::string to_string() const;
-    /** Build this expression, returning the value of the expression as an LLVM
-        value. Returns nullopt on error. */
-    nonstd::optional<llvm::Value*> code_gen(scope &s, llvm::IRBuilder<> &b) const;
+    /**
+       Build this expression, returning the value of the expression as an LLVM
+       value. Returns nullopt on error.
+
+       @param expected_type - The expected type. This will either generate an
+       error or cast the result of this expression to the given type. If this
+       is nullptr, no cast is performed.
+    */
+    nonstd::optional<llvm::Value*> code_gen(scope &s, llvm::IRBuilder<> &b,
+                                            const type* expected_type) const;
     /** Get the type of this expression */
     nonstd::optional<type> get_type(const scope& s) const;
   };

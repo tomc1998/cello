@@ -46,14 +46,11 @@ namespace cello {
   nonstd::optional<while_expr> parse_while_expr(lexer &l) {
     ASSERT_TOK_EXISTS_OR_ERROR_AND_RET(l, "while");
     l.next();
-    std::cout << "AFTER WHILE: " << l.get_remaining_input() << std::endl;
     const auto cond = parse_expr(l);
     if (!cond) {
       CONSUME_TO_END_PAREN_OR_ERROR(l);
       return nonstd::nullopt;
     }
-
-    std::cout << "AFTER COND: " << l.get_remaining_input() << std::endl;
 
     std::vector<expr> body;
     while ((l.peek() && l.peek()->val != ")") || !l.peek()) {
@@ -64,8 +61,6 @@ namespace cello {
       }
       body.push_back(*expr_opt);
     }
-
-    std::cout << "AFTER BODY: " << l.get_remaining_input() << std::endl;
 
     ASSERT_TOK_EXISTS_OR_ERROR_AND_RET(l, ")");
     l.next();

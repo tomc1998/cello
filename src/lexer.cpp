@@ -47,11 +47,11 @@ namespace cello {
     } else if (std::regex_search(start, end, m, r_string_lit, std::regex_constants::match_continuous)) {
       tok = token { nonstd::string_view (start, m.length()), token_type::string_lit };
       input_ptr += m.length();
-    } else if (std::regex_search(start, end, m, r_int_lit, std::regex_constants::match_continuous)) {
-      tok = token { nonstd::string_view (start, m.length()), token_type::int_lit };
-      input_ptr += m.length();
     } else if (std::regex_search(start, end, m, r_float_lit, std::regex_constants::match_continuous)) {
       tok = token { nonstd::string_view (start, m.length()), token_type::float_lit };
+      input_ptr += m.length();
+    } else if (std::regex_search(start, end, m, r_int_lit, std::regex_constants::match_continuous)) {
+      tok = token { nonstd::string_view (start, m.length()), token_type::int_lit };
       input_ptr += m.length();
     } else if (std::regex_search(start, end, m, r_ident, std::regex_constants::match_continuous)) {
       tok = token { nonstd::string_view (start, m.length()), token_type::ident };

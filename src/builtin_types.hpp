@@ -17,7 +17,15 @@ namespace cello {
   // Int types
   extern type builtin_ty_u64;
   extern type builtin_ty_u32;
+  extern type builtin_ty_u16;
   extern type builtin_ty_u8;
+
+  // Float types
+  extern type builtin_ty_f32;
+  extern type builtin_ty_f64;
+
+  // Bools
+  extern type builtin_ty_bool;
 
   // Struct types
   extern type builtin_ty_slice_u8;
