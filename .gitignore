@@ -2,3 +2,8 @@
 deps
 !deps/.gitkeep
 build
+
+.#*
+
+# Output from the compiler
+test_mod.o
