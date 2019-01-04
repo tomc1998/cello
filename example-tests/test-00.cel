@@ -1,26 +1,4 @@
-(struct foo
-  a u64
-  b u64)
-
-(fn get_string_slice __slice_u8 () "Hello")
-
 (fn extern printf void (fmt (ptr u8) &rest))
-
-(fn extern c_do_stuff void ())
-
-(fn add u64 (a u64 b u64)
-  (+ a b))
-
-(fn field_a u64 (f foo) (field f a))
-
-(fn field_b u64 (f foo) (field f b))
-
-(fn add_foo u64 (f foo) (add (field_a f) (field_b f)))
-
-(fn cello_do_stuff void () (c_do_stuff))
-
-(fn cello_print_stuff void ()
-  (printf c"Hello %d\n" 3))
 
 (fn test_mut void ()
   (mut x u64 3)
@@ -43,3 +21,8 @@
     (set total (+ total ii))
     (set ii (+ ii 1)))
   (printf c"TEST WHILE: Sum of numbers from 0 to %d: %d\n" n total))
+
+(fn main void ()
+  (test_while 10)
+  (test_if)
+  (test_mut))

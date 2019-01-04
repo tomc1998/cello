@@ -424,7 +424,8 @@ namespace cello {
 
       if (f.args.size() != fc.arg_list.size() && !f.is_var_args()) {
         report_error(sl, std::string("Expected ") + std::to_string(f.args.size()) + " args to call '"
-                     + to_string() + "', but " + std::to_string(fc.arg_list.size()) + " args were supplied.");
+                     + std::string(fc.name) + "', but " + std::to_string(fc.arg_list.size())
+                     + " args were supplied.");
         return nonstd::nullopt;
       }
 
@@ -532,9 +533,10 @@ namespace cello {
         report_error(sl, std::string("Unknown field name ") + std::string(field_name)
                      + " in type " + target_type->to_str());
         return nonstd::nullopt;
-        return field->type.code_gen(s);
       }
+      return field->type.code_gen(s);
     }
+    std::cerr << "UNIMPLEMENTED: get_type(" << to_string() << ")" << std::endl;
     assert(false);
   }
 }
