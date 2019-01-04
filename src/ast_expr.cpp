@@ -178,7 +178,7 @@ namespace cello {
           return nonstd::nullopt;
         }
         l.next();
-        return { { sl, set_expr { variable { name }, { new expr(*e) } } } };
+        return { { sl, set_expr { variable { name }, new expr(*e) } } };
       } else if (l.peek()->type == token_type::ident) { // Function call
         const auto function_call = parse_function_call(l);
         if (!function_call) { return nonstd::nullopt; }
