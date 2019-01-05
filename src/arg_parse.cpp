@@ -64,7 +64,7 @@ namespace cello {
 
 	const prog_arg& prog_args::get_positional(int pos) const {
 		assert(pos < num_positional());
-		for (int ii = 0; ii < arg_list.size(); ++ii) {
+		for (unsigned ii = 0; ii < arg_list.size(); ++ii) {
 			if (!arg_list[ii].is_flag) {
 				if (--pos < 0) {
 					return arg_list[ii];

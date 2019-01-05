@@ -1,10 +1,12 @@
 (fn extern printf void (fmt (ptr u8) &rest))
 
+;; Test mut expr
 (fn test_mut void ()
   (mut x u64 3)
   (set x 4)
   (printf c"TEST MUT (EXPECT 4): %d\n" x))
 
+;; Test if expr
 (fn test_if void ()
   (let x u64 3)
   (let y u64 4)
@@ -14,6 +16,7 @@
     (if (> y z) y (if (> z x) z x))))
   (printf c"TEST IF (EXPECT 5): Max of %d, %d, and %d: %d\n" x y z max))
 
+;; Test while expr
 (fn test_while void (n u64)
   (mut ii u64 0)
   (mut total u64 0)

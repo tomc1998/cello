@@ -12,7 +12,7 @@ std::regex r_float_lit = std::regex("[-+]?[0-9]\\.[0-9]");
 std::regex r_int_lit = std::regex("(0b|0x)?[0-9]+");
 std::regex r_string_lit = std::regex("\"(\\\\.|[^\"\\\\])*\"");
 std::regex r_c_string_lit = std::regex("c\"(\\\\.|[^\"\\\\])*\"");
-std::regex r_comment = std::regex(";.*$");
+std::regex r_comment = std::regex(";.*\n");
 
 
 namespace cello {
@@ -36,8 +36,8 @@ namespace cello {
     const char* end = input.c_str() + input.size();
     nonstd::optional<token> tok = nonstd::nullopt;
     if (std::regex_search(start, end, m, r_comment, std::regex_constants::match_continuous)) {
-      tok = token { nonstd::string_view (start, m.length()), token_type::comment };
       input_ptr += m.length();
+      tok = consume();
     } else if (std::regex_search(start, end, m, r_punc, std::regex_constants::match_continuous)) {
       tok = token { nonstd::string_view (start, m.length()), token_type::punc };
       input_ptr += m.length();
