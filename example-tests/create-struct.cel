@@ -1,0 +1,16 @@
+
+(fn extern printf void (fmt (ptr u8) &rest))
+
+;; Define a struct
+(struct my-test-struct
+  a u64
+  b u64
+  c bool)
+
+(fn main u8 (argc u32 argv (ptr (ptr u8)))
+  ;; Create a test struct
+  (let foo my-test-struct
+    (make my-test-struct a 3 b 4 c 0)) ;; We don't have bool literals yet!
+  ;; Print out the struct, then exit
+  (printf c"a = %d, b = %d, c = %d\n" (field foo a) (field foo b) (field foo c))
+  0)

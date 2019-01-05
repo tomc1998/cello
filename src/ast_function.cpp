@@ -183,13 +183,7 @@ namespace cello {
     for (const auto &a : args) {
       const auto arg_type = a.type.code_gen(s);
       if (!arg_type) { return nonstd::nullopt; }
-      if (arg_type->val.template is<struct_type>() && arg_type->num_ptr == 0) {
-        // Always take structs by pointer (copy at call-site, allow for
-        // move optimisations)
-        arg_types.push_back(llvm::PointerType::getUnqual(arg_type->to_llvm_type(s, c)));
-      } else {
-        arg_types.push_back(arg_type->to_llvm_type(s, c));
-      }
+      arg_types.push_back(arg_type->to_llvm_type(s, c));
     }
     const auto resolved_return_type = return_type.code_gen(s);
     if (!resolved_return_type) { return nonstd::nullopt; }

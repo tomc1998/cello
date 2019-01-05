@@ -42,7 +42,7 @@ namespace cello {
       don't own data. */
   struct struct_type {
     nonstd::string_view name;
-    /** A pointer to the struct data */
+    /** A pointer to the struct data. Should never be null! */
     struct_data* data;
     llvm::Type* to_llvm_type(const scope& s, llvm::LLVMContext &c) const;
     bool operator==(const struct_type& other) const;
@@ -84,6 +84,11 @@ namespace cello {
   struct struct_data {
     std::vector<struct_field> fields;
     const struct_field* find_field_with_name(nonstd::string_view field_name) const;
+    /** Returns -1 if field is not found */
+    int find_field_index_with_name(nonstd::string_view field_index) const;
+    /** Finds the field with the given index - this is the index retrieved from
+    find_field_index_with_name. Asserts if OOB. */
+    const struct_field& get_field_with_index(unsigned ix) const;
   };
 
   /** Used fortype idents - potentially poorly names, pointers are actually just
@@ -119,8 +124,11 @@ namespace cello {
 
   struct struct_field {
     nonstd::string_view name;
-    type_ident type;
+    type_ident field_type;
     llvm::Type* to_llvm_type(const scope& s, llvm::LLVMContext &c) const;
+    /** Convert this to a type (rather than just type_ident)
+     TODO Maybe cache this in the struct_field? */
+    nonstd::optional<type> get_type(const scope& s) const;
   };
 
   std::ostream& operator<<(std::ostream& o, const struct_type& s);

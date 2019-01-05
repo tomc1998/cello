@@ -31,7 +31,7 @@ namespace cello {
   }
 
   llvm::Type* struct_field::to_llvm_type(const scope& s, llvm::LLVMContext &c) const {
-    return type.code_gen(s)->to_llvm_type(s, c);
+    return field_type.code_gen(s)->to_llvm_type(s, c);
   }
 
   llvm::Type* type::to_llvm_type(const scope& s, llvm::LLVMContext &c) const {
@@ -51,7 +51,7 @@ namespace cello {
     o << s.name << "{";
     if (s.data) {
       for (const auto &f : s.data->fields) {
-        o << f.name << ": " << f.type.to_string() << ",";
+        o << f.name << ": " << f.field_type.to_string() << ",";
       }
       return o << "}";
     } else {
@@ -131,5 +131,23 @@ namespace cello {
       }
     }
     return nullptr;
+  }
+
+  int struct_data::find_field_index_with_name(nonstd::string_view field_name) const {
+    for (unsigned ii = 0; ii < fields.size(); ++ii) {
+      if (fields[ii].name == field_name) {
+        return (int)ii;
+      }
+    }
+    return -1;
+  }
+
+  const struct_field& struct_data::get_field_with_index(unsigned ix) const {
+    assert(ix < fields.size());
+    return fields[ix];
+  }
+
+  nonstd::optional<type> struct_field::get_type(const scope& s) const {
+    return field_type.code_gen(s);
   }
 }

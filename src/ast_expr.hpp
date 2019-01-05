@@ -62,6 +62,14 @@ namespace cello {
     nonstd::string_view val;
   };
 
+  /** Make a struct */
+  struct make_expr {
+    type_ident type_name;
+    /** Maps names to initialisation exprs */
+    std::vector<std::pair<nonstd::string_view, expr>> field_assignments;
+    nonstd::optional<llvm::Value*> code_gen(const source_label &sl, scope &s, llvm::IRBuilder<> &b) const;
+  };
+
   /** Access an element on a struct. This is effectively just a GEP. */
   struct field_access_expr {
     std::unique_ptr<expr> target;
@@ -108,7 +116,7 @@ namespace cello {
     source_label sl;
     mapbox::util::variant<function_call, bin_op_expr, un_op_expr, variable, int_lit,
                           float_lit, string_lit, c_string_lit, mut_expr, set_expr, let_expr,
-                          while_expr, if_expr, field_access_expr> val;
+                          while_expr, if_expr, field_access_expr, make_expr> val;
     std::string to_string() const;
     /**
        Build this expression, returning the value of the expression as an LLVM

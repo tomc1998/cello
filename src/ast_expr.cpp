@@ -99,6 +99,37 @@ namespace cello {
     return { function_call { name, args } };
   }
 
+  nonstd::optional<make_expr> parse_make_expr(lexer &l) {
+    ASSERT_TOK_EXISTS_OR_ERROR_AND_RET(l, "make");
+    l.next();
+    const auto type_name = parse_type_ident(l);
+    if (!type_name) {
+      CONSUME_TO_END_PAREN_OR_ERROR(l);
+      return nonstd::nullopt;
+    }
+
+    std::vector<std::pair<nonstd::string_view, expr>> body;
+    while ((l.peek() && l.peek()->val != ")") || !l.peek()) {
+      const auto name = l.next()->val;
+      ASSERT_TOK_EXISTS_OR_ERROR_AND_RET(l, "the rest of the struct initialisation");
+      if (l.peek()->val == ")") {
+        report_error(l.get_curr_source_label(), "Unexpected end of make expression");
+        CONSUME_TO_END_PAREN_OR_ERROR(l);
+        return nonstd::nullopt;
+      }
+      const auto expr_opt = parse_expr(l);
+      if (!expr_opt) {
+        CONSUME_TO_END_PAREN_OR_ERROR(l);
+        return nonstd::nullopt;
+      }
+      body.push_back(std::make_pair(name, *expr_opt));
+    }
+
+    ASSERT_TOK_EXISTS_OR_ERROR_AND_RET(l, ")");
+    l.next();
+    return { { *type_name, body } };
+  }
+
   nonstd::optional<expr> parse_expr(lexer &l) {
     const auto sl = l.get_curr_source_label();
     ASSERT_TOK_EXISTS_OR_ERROR_AND_RET(l, "expression");
@@ -113,7 +144,6 @@ namespace cello {
         if (!rchild) { return nonstd::nullopt; }
         if (!l.peek() || l.peek()->val != ")") {
           report_error(l.get_curr_source_label(), "Expected ')'");
-
           return nonstd::nullopt;
         }
         l.next();
@@ -128,6 +158,10 @@ namespace cello {
         else { return { { sl, *e } }; };
       } else if (l.peek()->val == "if") {
         const auto e = parse_if_expr(l);
+        if (!e) { return nonstd::nullopt; }
+        else { return { { sl, *e } }; };
+      } else if (l.peek()->val == "make") {
+        const auto e = parse_make_expr(l);
         if (!e) { return nonstd::nullopt; }
         else { return { { sl, *e } }; };
       } else if (l.peek()->val == "let" || l.peek()->val == "mut") {
@@ -223,6 +257,7 @@ namespace cello {
                      [&](mut_expr x)          { return std::string("mut_expr"); },
                      [&](let_expr x)          { return std::string("let_expr"); },
                      [&](set_expr x)          { return std::string("set_expr"); },
+                     [&](make_expr x)         { return std::string("make_expr"); },
                      [&](field_access_expr x) { return std::string("field_access_expr"); });
   }
 
@@ -267,19 +302,13 @@ namespace cello {
     const auto data = target_type->val.template get<struct_type>().data;
     assert(data);
     // Find field
-    int found_field = -1;
-    for (int ii = 0; ii < (int)data->fields.size(); ++ii) {
-      if (data->fields[ii].name == field_name) {
-        found_field = ii;
-        break;
-      }
-    }
+    int found_field = data->find_field_index_with_name(field_name);
     assert(found_field >= 0 && "Can't find field");
     // Codegen the target so we have a llvm::Value* to index
     auto target_llvm_val = target->code_gen(s, b, nullptr);
     if (!target_llvm_val) { return nonstd::nullopt; }
-    const auto gep = b.CreateStructGEP(*target_llvm_val, found_field);
-    return { b.CreateLoad(gep) };
+    const auto found_field_heap = new unsigned((unsigned)found_field);
+    return { b.CreateExtractValue(*target_llvm_val, { *found_field_heap }) };
   }
 
   nonstd::optional<llvm::Value*> variable::code_gen(const source_label &sl, scope &s,
@@ -298,6 +327,44 @@ namespace cello {
     }
   }
 
+  nonstd::optional<llvm::Value*> make_expr::code_gen(const source_label &sl, scope &s,
+                                                     llvm::IRBuilder<> &b) const {
+    const auto val_type = type_name.code_gen(s);
+    if (!val_type) { return nonstd::nullopt; }
+    if (!val_type->val.template is<struct_type>()) {
+      report_error(sl, std::string("Cannot make type '") + type_name.to_string()
+                   + "', as it is not a struct");
+      return nonstd::nullopt;
+    }
+    const auto struct_data = val_type->val.template get<struct_type>().data;
+    assert(struct_data);
+    const auto llvm_type = val_type->to_llvm_type(s, b.getContext());
+    llvm::Value* curr_val = llvm::UndefValue::get(llvm_type);
+    // Pre-allocate the indices for the arrayrefs we're passing tollvm
+    unsigned* indices = new unsigned[field_assignments.size()];
+    unsigned curr_ix = 0;
+    for (const auto &name_value_pair : field_assignments) {
+      const auto &name = name_value_pair.first;
+      const auto &val = name_value_pair.second;
+      const auto field_ix = struct_data->find_field_index_with_name(name);
+      if (field_ix < 0) { // Check field actually exists
+        report_error(sl, std::string("Cannot find field '") + std::string(name)
+                     + "' in struct type " + type_name.to_string());
+        return nonstd::nullopt;
+      }
+      const auto field_type = struct_data->get_field_with_index(field_ix).get_type(s);
+      assert(field_type);
+      const auto llvm_val = val.code_gen(s, b, &*field_type);
+      if (!llvm_val) { return nonstd::nullopt; }
+      // Store the index on the heap so we can make an arrayref to it
+      indices[curr_ix] = field_ix;
+      curr_val = b.CreateInsertValue(curr_val, *llvm_val,
+                                     llvm::ArrayRef<unsigned>(indices[curr_ix]));
+      curr_ix += 1;
+    }
+    return curr_val;
+  }
+
   nonstd::optional<llvm::Value*> expr::code_gen(scope &s, llvm::IRBuilder<> &b, const type* expected_type) const {
     auto &llvm_ctx = b.getContext();
     nonstd::optional<llvm::Value*> res = nonstd::nullopt;
@@ -305,6 +372,8 @@ namespace cello {
       res = val.template get<bin_op_expr>().code_gen(sl, s, b);
     } else if (val.template is<variable>()) {
       res = val.template get<variable>().code_gen(sl, s, b);
+    } else if (val.template is<make_expr>()) {
+      res = val.template get<make_expr>().code_gen(sl, s, b);
     } else if (val.template is<let_expr>()) {
       const auto &e = val.template get<let_expr>();
       const auto e_type = e.type.code_gen(s);
@@ -484,8 +553,14 @@ namespace cello {
       return val.template get<bin_op_expr>().lchild->get_type(s);
     } else if (val.template is<variable>()) {
       const auto v = s.find_symbol_with_type(val.template get<variable>().val, named_value_type::var);
-      if (!v) { return nonstd::nullopt; }
+      if (!v) {
+        report_error(sl, std::string("Cannot find variable with name '")
+                     + std::string(val.template get<variable>().val) + "'");
+        return nonstd::nullopt;
+      }
       return { v->val.template get<var>().var_type };
+    } else if (val.template is<make_expr>()) {
+      return val.template get<make_expr>().type_name.code_gen(s);
     } else if (val.template is<let_expr>()) {
       return val.template get<let_expr>().type.code_gen(s);
     } else if (val.template is<if_expr>()) {
@@ -534,7 +609,7 @@ namespace cello {
                      + " in type " + target_type->to_str());
         return nonstd::nullopt;
       }
-      return field->type.code_gen(s);
+      return field->field_type.code_gen(s);
     }
     std::cerr << "UNIMPLEMENTED: get_type(" << to_string() << ")" << std::endl;
     assert(false);
