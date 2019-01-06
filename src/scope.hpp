@@ -15,22 +15,36 @@ namespace cello {
   enum class named_value_type { type, var, function };
 
   struct var {
-    static constexpr char FLAGS_MUT    = 0b00000001;
-    static constexpr char FLAGS_MEMBER = 0b00000010;
+    static constexpr char FLAGS_MUT       = 0b00000001;
+    static constexpr char FLAGS_MEMBER    = 0b00000010;
+    static constexpr char FLAGS_ALLOCATED = 0b00000100;
     /** The type of this variable */
     type var_type;
-    /** If is_mutable(), this will be a pointer (to a stack variable), and will
-        need to be loaded */
+    /** If is_mutable() OR is_allocated(), this will be a pointer (to a stack
+        variable), and will need to be loaded */
     llvm::Value* val;
     /**
        Bit 0 - FLAGS_MUT
        Bit 1 - FLAGS_MEMBER - True if this is a member variable and requires
        chasing up 'this'
+       Bit 2 - FLAGS_ALLOCATED - True if this has already been allocated with
+       llvm's alloca - this is for when you have non-mutable variables that you
+       need to get the address of. To get the address, first alloca, then store
+       the value - this bit is then set to true and the val is set to the
+       pointer to the memory. If is_mutable, this bit is undefined.
+
+       @note - Modify these through the set_X functions!
      */
     char flags = 0;
 
+    /** If val is a pointer to memory, not a register value */
+    inline bool is_pointer() const { return is_mutable() || is_allocated(); }
     inline bool is_mutable() const { return (flags & FLAGS_MUT) != 0; }
     inline bool is_member() const { return (flags & FLAGS_MEMBER) != 0; }
+    inline bool is_allocated() const { return (flags & FLAGS_ALLOCATED) != 0; }
+    inline void set_mutable(bool val) { flags |= val ? FLAGS_MUT : 0; }
+    inline void set_member(bool val) { flags |= val ? FLAGS_MEMBER : 0; }
+    inline void set_allocated(bool val) {flags |= val ? FLAGS_ALLOCATED : 0;}
   };
 
   struct named_value {

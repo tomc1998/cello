@@ -42,15 +42,17 @@ namespace cello {
     /**
        Generates instructions to load this as a variable (assuming this IS a
        variable). Reports error if this is a function or type.
-       @param deref_mut=true - If set to false, don't generate a load
-       instruction for mutable symbols. This is useful when querying the
-       symbol location.
-       This function will assert if deref_mut is false, but the symbol is
-       immutable (as the chances are this is a logic error on the compiler's
+       @param deref_ptr=true - If set to false, don't generate a load
+       instruction for mutable or allocated symbols. This is useful when
+       querying the symbol location. This does NOT mean transparently deref
+       pointers - this is on a lower level, to do with the LLVM IR and whether a
+       symbol is on the stack or whether it's still in a 'register'.
+       This function will assert if deref_ptr is false, but the symbol is
+       not a pointer (as the chances are this is a logic error on the compiler's
        part).
     */
     nonstd::optional<llvm::Value*> find_as_var(const source_label& sl, const scope &s,
-                                               llvm::IRBuilder<> &b, bool deref_mut=true) const;
+                                               llvm::IRBuilder<> &b, bool deref_ptr=true) const;
     /** Find a function matching this symbol. Returns nullptr if not found. */
     const function* find_as_function(const source_label &sl, const scope &s) const;
   };
@@ -147,6 +149,11 @@ namespace cello {
     /** If this is a field access to a method, return the receiver as a llvm
     *Value. Returns nullopt if not a method call. */
     nonstd::optional<llvm::Value*> find_receiver(scope &s, llvm::IRBuilder<> &b) const;
+    /** If we codegen this expr, will it return a pointer to the expression or
+    the value itself? This is useful for when we're generating loads and GEPs.
+    This doesn't mean 'is this of type pointer' - this means has this been
+    allocated on the stack with 'alloca'? */
+    bool is_pointer(const scope& s) const;
   };
 
   nonstd::optional<expr> parse_expr(lexer &l);

@@ -329,7 +329,7 @@ namespace cello {
   }
 
   nonstd::optional<llvm::Value*> symbol::find_as_var(const source_label &sl, const scope &s,
-                                                    llvm::IRBuilder<> &b, bool deref_mut) const {
+                                                    llvm::IRBuilder<> &b, bool deref_ptr) const {
     if (val == "this") {
       const auto this_ptr = s.get_this_ptr();
       if (!this_ptr) { return nonstd::nullopt; }
@@ -341,10 +341,10 @@ namespace cello {
       return nonstd::nullopt;
     }
     const auto &v = n_value->val.template get<var>();
-    if (deref_mut) {
-      return { v.is_mutable() ? b.CreateLoad(v.val) : v.val };
+    if (deref_ptr) {
+      return { v.is_pointer() ? b.CreateLoad(v.val) : v.val };
     } else {
-      assert(v.is_mutable());
+      assert(v.is_pointer());
       return { v.val };
     }
   }
@@ -414,10 +414,8 @@ namespace cello {
       if (!e_val) { return nonstd::nullopt; }
       assert(e_type.has_value());
       assert(e_val.has_value());
-      const auto e_type_unwrap = *e_type;
-      const auto e_val_unwrap = *e_val;
-      s.symbol_table.insert(std::make_pair(e.var.val, named_value { var { e_type_unwrap, e_val_unwrap, 0 } }));
-      res = e_val_unwrap;
+      s.symbol_table.insert(std::make_pair(e.var.val, named_value { var { *e_type, *e_val, 0 } }));
+      res = *e_val;
     } else if (val.template is<mut_expr>()) {
       const auto &e = val.template get<mut_expr>();
       const auto e_type = e.type.code_gen(s);
@@ -694,26 +692,37 @@ namespace cello {
     }
     const auto &fae = val.template get<field_access_expr>();
     assert (fae.target->val.template is<symbol>() && "Only support getting receiver for symbols!");
-    // TODO OPTIMISE THIS SHIT!!!
-    // When we're calling a method on a constant value, we need to alloca
-    // since we're passing a pointer - but we're going to do this MULTIPLE
-    // times for the same value. bleh!
-    // Needs to be some sort of analysis to only allocate once if we need it.
     const auto &sym = fae.target->val.template get<symbol>();
-    const auto sym_var_opt = s.find_symbol_with_type(sym.val, named_value_type::var);
+    auto sym_var_opt = s.find_symbol_with_type(sym.val, named_value_type::var);
     if (!sym_var_opt) {
       report_error(sl, std::string("Cannot find receiver for symbol ") + std::string(sym.val));
       return nonstd::nullopt;
     }
-    const auto &sym_var = sym_var_opt->val.template get<var>();
-    if (sym_var.is_mutable()) {
+    auto &sym_var = sym_var_opt->val.template get<var>();
+    if (sym_var.is_pointer()) {
       // Is alreaedy a pointer
       return { sym_var.val };
     } else {
-      // Allocate, then return a pointer to that allocation
+      // Allocate, then return a pointer to that allocation.
       const auto alloca = b.CreateAlloca(sym_var.var_type.to_llvm_type(s, b.getContext()));
       b.CreateStore(sym_var.val, alloca);
+      // Make sure we set_allocated to true, indicating that in the future if we
+      // want to get the address of this var, we can just use this allocation,
+      // rather than re-allocating.
+      sym_var.val = alloca;
+      sym_var.set_allocated(true);
       return { alloca };
     }
+  }
+
+  bool expr::is_pointer(const scope& s) const {
+    assert(val.template is<symbol>() && "Not implemented for non-symbol values");
+    if (val.template get<symbol>().val == "this") {
+      // FIXME We're assuming we can't take the address of the pointer to this - is this an issue?
+      return false;
+    }
+    const auto nv = s.find_symbol_with_type(val.template get<symbol>().val, named_value_type::var);
+    assert(nv);
+    return nv->val.template get<var>().is_pointer();
   }
 }
