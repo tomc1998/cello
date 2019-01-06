@@ -1,0 +1,22 @@
+(fn extern printf void (fmt (ptr u8) &rest))
+
+(struct vec
+  x u32
+  y u32
+
+  ;; Dot product
+  (fn dot u32 (other vec)
+    (+ (* (field this x) (field other x))
+       (* (field this y) (field other y))))
+
+  )
+
+(fn main u8 ()
+	(let v0 vec (make vec x 1 y 2))
+	(let v1 vec (make vec x 3 y 4))
+  ;; Dot product of {1, 2} and {3, 4} = 1 * 3 + 4 * 2 = 11
+  (printf c"Dot product of {%d, %d} and {%d, %d} = %d\n"
+    (field v0 x) (field v0 y)
+    (field v1 x) (field v1 y)
+    ((field v0 dot) v1))
+	0)

@@ -3,6 +3,7 @@
 #include <iostream>
 #include <unordered_map>
 #include <memory>
+#include <cstring>
 
 #include <llvm/ADT/APInt.h>
 #include <llvm/ADT/STLExtras.h>
@@ -25,6 +26,7 @@
 #include <llvm/Target/TargetMachine.h>
 #include <llvm/Target/TargetOptions.h>
 
+#include "struct_type.hpp"
 #include "error.hpp"
 #include "ast_util.hpp"
 #include "ast_function.hpp"
@@ -71,6 +73,18 @@ namespace cello {
         if (!res) { continue; }
         type t { *res, 0 };
         global_scope.symbol_table.insert(std::make_pair(res->name, named_value { t }));
+        // Codegen all methods (with name mangling)
+        assert(res->data);
+        const auto prefix = std::string("__method_") + std::string(res->name) + "_";
+        for (auto &m : res->data->methods) {
+          // Mangle here... ugly but required due to lifetimes (fuck llvm)
+          const unsigned mangled_size = prefix.size() + m.name.size();
+          char* mangled = new char[mangled_size];
+          std::memcpy(mangled, prefix.c_str(), prefix.size());
+          std::memcpy(mangled + prefix.size(), m.name.begin(), m.name.size());
+          m.to_llvm_function(global_scope, builder, module.get(),
+                             { nonstd::string_view(mangled, mangled_size) });
+        }
       } else {
         report_error(l.get_curr_source_label(),
                      std::string("Unexpected token ") + std::string(l.peek()->val));

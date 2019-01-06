@@ -125,13 +125,17 @@ namespace cello {
   }
 
   nonstd::optional<llvm::Function*>
-  function::to_llvm_function(scope& s, llvm::IRBuilder<> &b, llvm::Module* module) {
+  function::to_llvm_function(scope& s, llvm::IRBuilder<> &b, llvm::Module* module,
+                             nonstd::optional<nonstd::string_view> mangle) {
     auto &llvm_ctx = b.getContext();
+    assert(!mangle || (mangle && !cached_function));
     if (cached_function) { return { cached_function }; }
     const auto ft_opt = to_llvm_function_type(s, llvm_ctx);
     if (!ft_opt) { return nonstd::nullopt; }
     const auto ft = *ft_opt;
-    const auto llvm_name = llvm::StringRef(name.begin(), name.size());
+    const auto llvm_name = mangle
+      ? llvm::StringRef(mangle->begin(), mangle->size())
+      : llvm::StringRef(name.begin(), name.size());
     cached_function =
       llvm::Function::Create(ft, llvm::Function::ExternalLinkage,
                              llvm_name, module);
@@ -139,11 +143,18 @@ namespace cello {
 
     // Create scope and add args to scope
     auto function_scope = s.create_subscope();
+    // if this is a member function, add a ptr to 'this'. Also add all the
+    // members to this subscope as member vars.
+    if (this_type) {
+      const auto this_value = cached_function->arg_begin();
+      function_scope.this_ptr.emplace(var { this_type->ptr(1), this_value });
+      // TODO Add all members to scope
+    }
     for (unsigned ii = 0; ii < args.size(); ++ii) {
       const auto arg_name = args[ii].name;
       const auto arg_type = args[ii].type.code_gen(s);
       if (!arg_type) { return nonstd::nullopt; }
-      const auto arg_value = cached_function->arg_begin() + ii;
+      const auto arg_value = cached_function->arg_begin() + ii + (this_type ? 1 : 0);
       const named_value nv { var { *arg_type, arg_value } };
       function_scope.symbol_table.insert(std::make_pair(arg_name, nv));
     }
@@ -180,6 +191,11 @@ namespace cello {
     if (cached_function_type) { return { cached_function_type }; }
     // Code gen for this function
     std::vector<llvm::Type*> arg_types;
+    // First, add this ptr (if this is a member)
+    if (this_type) {
+      const auto this_llvm_type = this_type->ptr(1).to_llvm_type(s, c);
+      arg_types.push_back(this_llvm_type);
+    }
     for (const auto &a : args) {
       const auto arg_type = a.type.code_gen(s);
       if (!arg_type) { return nonstd::nullopt; }

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "type.hpp"
+#include "type_ident.hpp"
 #include "ast_control.hpp"
 #include "source_label.hpp"
 #include "ast_control.hpp"
@@ -84,7 +85,8 @@ namespace cello {
     field_access_expr(expr* target, nonstd::string_view field_name)
       : target(target), field_name(field_name) {}
     field_access_expr(const field_access_expr& other);
-    nonstd::optional<llvm::Value*> code_gen(scope &s, llvm::IRBuilder<> &b) const;
+    nonstd::optional<llvm::Value*> code_gen(const source_label &sl,
+                                            scope &s, llvm::IRBuilder<> &b) const;
   };
 
   struct mut_expr {
@@ -142,6 +144,9 @@ namespace cello {
     /** Resolve this expression into a function. Returns nullptr and reports and
     errors if not possible. */
     const function* find_as_function(const scope &s) const;
+    /** If this is a field access to a method, return the receiver as a llvm
+    *Value. Returns nullopt if not a method call. */
+    nonstd::optional<llvm::Value*> find_receiver(scope &s, llvm::IRBuilder<> &b) const;
   };
 
   nonstd::optional<expr> parse_expr(lexer &l);

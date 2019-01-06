@@ -15,6 +15,8 @@ set (cello-srcs
   ${src-dir}/main.cpp
   ${src-dir}/lexer.cpp
   ${src-dir}/ast_type_ident.cpp
+  ${src-dir}/struct_decl.cpp
+  ${src-dir}/struct_type.cpp
   ${src-dir}/arg_parse.cpp
   ${src-dir}/ast_expr.cpp
   ${src-dir}/ast_control.cpp

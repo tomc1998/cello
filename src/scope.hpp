@@ -15,7 +15,8 @@ namespace cello {
   enum class named_value_type { type, var, function };
 
   struct var {
-    static constexpr char FLAGS_MUT = 0b00000001;
+    static constexpr char FLAGS_MUT    = 0b00000001;
+    static constexpr char FLAGS_MEMBER = 0b00000010;
     /** The type of this variable */
     type var_type;
     /** If is_mutable(), this will be a pointer (to a stack variable), and will
@@ -23,10 +24,13 @@ namespace cello {
     llvm::Value* val;
     /**
        Bit 0 - FLAGS_MUT
+       Bit 1 - FLAGS_MEMBER - True if this is a member variable and requires
+       chasing up 'this'
      */
     char flags = 0;
 
     inline bool is_mutable() const { return (flags & FLAGS_MUT) != 0; }
+    inline bool is_member() const { return (flags & FLAGS_MEMBER) != 0; }
   };
 
   struct named_value {
@@ -36,6 +40,8 @@ namespace cello {
 
   struct scope {
     scope* parent = nullptr;
+    /** The current context's 'this' for methods */
+    nonstd::optional<var> this_ptr = nonstd::nullopt;
     std::map<nonstd::string_view, named_value> symbol_table;
     scope create_subscope();
 
@@ -47,5 +53,7 @@ namespace cello {
                                        const named_value_type type) const;
     const named_value* find_symbol(const nonstd::string_view name) const;
     named_value* find_symbol(const nonstd::string_view name);
+    /** nullptr if not in a method */
+    const var* get_this_ptr() const;
   };
 }

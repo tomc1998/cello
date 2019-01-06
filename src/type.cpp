@@ -1,4 +1,6 @@
 #include "type.hpp"
+#include "struct_type.hpp"
+#include "ast_function.hpp"
 #include <ostream>
 #include <llvm/ADT/ArrayRef.h>
 #include <llvm/IR/Type.h>
@@ -23,15 +25,7 @@ namespace cello {
 
   llvm::Type* struct_type::to_llvm_type(const scope& s, llvm::LLVMContext &c) const {
     assert(data);
-    std::vector<llvm::Type*> fields;
-    for (const auto &f : data->fields) {
-      fields.push_back(f.to_llvm_type(s, c));
-    }
-    return llvm::StructType::get(c, {fields});
-  }
-
-  llvm::Type* struct_field::to_llvm_type(const scope& s, llvm::LLVMContext &c) const {
-    return field_type.code_gen(s)->to_llvm_type(s, c);
+    return data->to_llvm_type(s, c);
   }
 
   llvm::Type* type::to_llvm_type(const scope& s, llvm::LLVMContext &c) const {
@@ -122,32 +116,5 @@ namespace cello {
 
   bool type::operator!=(const type& other) const {
     return !(*this == other);
-  }
-
-  const struct_field* struct_data::find_field_with_name(nonstd::string_view field_name) const {
-    for (const auto &f : fields) {
-      if (f.name == field_name) {
-        return &f;
-      }
-    }
-    return nullptr;
-  }
-
-  int struct_data::find_field_index_with_name(nonstd::string_view field_name) const {
-    for (unsigned ii = 0; ii < fields.size(); ++ii) {
-      if (fields[ii].name == field_name) {
-        return (int)ii;
-      }
-    }
-    return -1;
-  }
-
-  const struct_field& struct_data::get_field_with_index(unsigned ix) const {
-    assert(ix < fields.size());
-    return fields[ix];
-  }
-
-  nonstd::optional<type> struct_field::get_type(const scope& s) const {
-    return field_type.code_gen(s);
   }
 }

@@ -5,6 +5,7 @@
 #include "scope.hpp"
 #include "builtin_types.hpp"
 #include "string_lit_parse.hpp"
+#include "struct_type.hpp"
 
 #include <iostream>
 #include <string>
@@ -272,9 +273,10 @@ namespace cello {
 
   nonstd::optional<llvm::Value*> bin_op_expr::code_gen(const source_label &sl, scope &s, llvm::IRBuilder<> &b) const {
     const auto lval = lchild->code_gen(s, b, nullptr);
+    if (!lval) { return nonstd::nullopt; }
     const auto lchild_type = *lchild->get_type(s);
     const auto rval = rchild->code_gen(s, b, &lchild_type);
-    if (!lval || !rval) { return nonstd::nullopt; }
+    if (!rval) { return nonstd::nullopt; }
     switch (op) {
     case bin_op::add: return { b.CreateAdd(*lval, *rval) };
     case bin_op::sub: return { b.CreateSub(*lval, *rval) };
@@ -291,27 +293,48 @@ namespace cello {
     assert(false);
   }
 
-  nonstd::optional<llvm::Value*> field_access_expr::code_gen(scope &s, llvm::IRBuilder<> &b) const {
+  nonstd::optional<llvm::Value*> field_access_expr::code_gen(const source_label &sl,
+                                                             scope &s, llvm::IRBuilder<> &b) const {
     assert(target->val.template is<symbol>() && "We only support field access on symbols");
     // First, get the target type
     const auto target_type = target->get_type(s);
-    assert(target_type);
-    assert(target_type->val.template is<struct_type>());
-    // get struct data
+    if (!target_type) { return nonstd::nullopt; }
+    if (!target_type->val.template is<struct_type>()) {
+      report_error(sl, "Can't get a field on a var which is not a struct or a pointer to a struct");
+      return nonstd::nullopt;
+    }
     const auto data = target_type->val.template get<struct_type>().data;
     assert(data);
     // Find field
     int found_field = data->find_field_index_with_name(field_name);
-    assert(found_field >= 0 && "Can't find field");
+    if (found_field < 0) {
+      report_error(sl, std::string("Can't find field '") + std::string(field_name) + "'");
+      return nonstd::nullopt;
+    }
     // Codegen the target so we have a llvm::Value* to index
     auto target_llvm_val = target->code_gen(s, b, nullptr);
     if (!target_llvm_val) { return nonstd::nullopt; }
-    const auto found_field_heap = new unsigned((unsigned)found_field);
-    return { b.CreateExtractValue(*target_llvm_val, { *found_field_heap }) };
+    if (target_type->num_ptr == 1) {
+      // Create a GEP and a load
+      const auto gep = b.CreateStructGEP(*target_llvm_val, (unsigned)found_field);
+      return { b.CreateLoad(gep) };
+    } else if (target_type->num_ptr == 0) {
+      // Create an extractvalue, since this is a value type
+      const auto found_field_heap = new unsigned((unsigned)found_field);
+      return { b.CreateExtractValue(*target_llvm_val, { *found_field_heap }) };
+    } else {
+      report_error(sl, "Can't index a field transparently through more than 1 level of indirection");
+      return nonstd::nullopt;
+    }
   }
 
   nonstd::optional<llvm::Value*> symbol::find_as_var(const source_label &sl, const scope &s,
                                                     llvm::IRBuilder<> &b, bool deref_mut) const {
+    if (val == "this") {
+      const auto this_ptr = s.get_this_ptr();
+      if (!this_ptr) { return nonstd::nullopt; }
+      else { return this_ptr->val; }
+    }
     const auto n_value = s.find_symbol_with_type(val, named_value_type::var);
     if (!n_value) {
       report_error(sl, std::string("Undefined variable '") + std::string(val) + "'");
@@ -419,7 +442,7 @@ namespace cello {
       if (!e_val) { return nonstd::nullopt; }
       res = b.CreateStore(*e_val, *e_var);
     } else if (val.template is<field_access_expr>()) {
-      res = val.template get<field_access_expr>().code_gen(s, b);
+      res = val.template get<field_access_expr>().code_gen(sl, s, b);
     } else if (val.template is<while_expr>()) {
       const auto &e = val.template get<while_expr>();
       const auto prev_block = b.GetInsertBlock();
@@ -492,6 +515,11 @@ namespace cello {
       // Get function
       const auto f = fc.name->find_as_function(s);
       if (!f) { return nonstd::nullopt; }
+      nonstd::optional<llvm::Value*> receiver = nonstd::nullopt;
+      if (f->is_method()) {
+        receiver = fc.name->find_receiver(s, b);
+        assert(receiver);
+      }
       const auto llvm_function = f->get_cached_llvm_function();
       assert(llvm_function);
 
@@ -503,7 +531,10 @@ namespace cello {
       }
 
       // Eval all exprs
-      llvm::Value** args = new llvm::Value*[fc.arg_list.size()];
+      llvm::Value** args = new llvm::Value*[fc.arg_list.size() + (receiver ? 1 : 0)];
+      if (receiver) {
+        args[0] = *receiver;
+      } // Add receiver (this*)
       for (unsigned ii = 0; ii < fc.arg_list.size(); ++ii) {
         type* arg_type = nullptr;
         if (f->args.size() > ii) {
@@ -516,10 +547,12 @@ namespace cello {
         if (!expr_opt) {
           return nonstd::nullopt;
         }
-        args[ii] = *expr_opt;
+        args[ii + (receiver ? 1 : 0)] = *expr_opt;
       }
 
-      res = b.CreateCall(llvm_function, llvm::ArrayRef<llvm::Value*>(args, fc.arg_list.size()));
+      res = b.CreateCall(llvm_function,
+                         llvm::ArrayRef<llvm::Value*>(args, fc.arg_list.size()
+                                                      + (receiver ? 1 : 0)));
     } else if (val.template is<string_lit>()) {
       res = { val.template get<string_lit>().code_gen(s, b) };
     } else if (val.template is<int_lit>()) {
@@ -528,6 +561,9 @@ namespace cello {
     } else if (val.template is<c_string_lit>()) {
       const auto &s = val.template get<c_string_lit>().val;
       res = b.CreateGlobalStringPtr(llvm::StringRef(s.begin(), s.size()));
+    } else {
+      report_error(sl, std::string("Code gen not implemented for this type of expr: ") + to_string());
+      return nonstd::nullopt;
     }
     if (res) {
       const auto this_type = *get_type(s);
@@ -543,10 +579,7 @@ namespace cello {
       } else {
         return *res;
       }
-    } else {
-      report_error(sl, std::string("Code gen not implemented for this type of expr: ") + to_string());
-      return nonstd::nullopt;
-    }
+    } else { return nonstd::nullopt; }
   }
 
   nonstd::optional<type> expr::get_type(const scope& s) const {
@@ -556,6 +589,14 @@ namespace cello {
       if (bop.is_bool_expr()) { return { builtin_ty_bool }; }
       return val.template get<bin_op_expr>().lchild->get_type(s);
     } else if (val.template is<symbol>()) {
+      if (val.template get<symbol>().val == "this") {
+        const auto v = s.get_this_ptr();
+        if (!v) {
+          report_error(sl, std::string("Cannot find 'this' - is this a member function?"));
+          return nonstd::nullopt;
+        }
+        return v->var_type;
+      }
       const auto v = s.find_symbol_with_type(val.template get<symbol>().val, named_value_type::var);
       if (!v) {
         report_error(sl, std::string("Cannot find symbol with name '")
@@ -621,12 +662,58 @@ namespace cello {
   const function* expr::find_as_function(const scope &s) const {
     if (val.template is<field_access_expr>()) {
       // Make sure this is a struct method, then return the associated function
-      assert(false && "Unimplemented");
+      const auto &fae = val.template get<field_access_expr>();
+      // First, get the struct type
+      const auto target = fae.target->get_type(s);
+      if (!target) { return nullptr; }
+      if (!target->val.template is<struct_type>()) {
+        report_error(sl, std::string("Trying to get method on type '") + target->to_str()
+                     + "', which is not a struct type.");
+        return nullptr;
+      }
+      const auto &stype = target->val.template get<struct_type>();
+      assert(stype.data);
+      const auto f = stype.data->find_method_with_name(fae.field_name);
+      if (!f) {
+        report_error(sl, std::string("No method '") + std::string(fae.field_name)
+                     + "', on type '" + std::string(stype.name) + "'");
+        return nullptr;
+      }
+      return f;
     } else if (val.template is<symbol>()) {
       return val.template get<symbol>().find_as_function(sl, s);
     } else {
       report_error(sl, std::string("'") + to_string() + "' is not a function");
       return nullptr;
+    }
+  }
+
+  nonstd::optional<llvm::Value*> expr::find_receiver(scope &s, llvm::IRBuilder<> &b) const {
+    if (!val.template is<field_access_expr>()) {
+      return nonstd::nullopt;
+    }
+    const auto &fae = val.template get<field_access_expr>();
+    assert (fae.target->val.template is<symbol>() && "Only support getting receiver for symbols!");
+    // TODO OPTIMISE THIS SHIT!!!
+    // When we're calling a method on a constant value, we need to alloca
+    // since we're passing a pointer - but we're going to do this MULTIPLE
+    // times for the same value. bleh!
+    // Needs to be some sort of analysis to only allocate once if we need it.
+    const auto &sym = fae.target->val.template get<symbol>();
+    const auto sym_var_opt = s.find_symbol_with_type(sym.val, named_value_type::var);
+    if (!sym_var_opt) {
+      report_error(sl, std::string("Cannot find receiver for symbol ") + std::string(sym.val));
+      return nonstd::nullopt;
+    }
+    const auto &sym_var = sym_var_opt->val.template get<var>();
+    if (sym_var.is_mutable()) {
+      // Is alreaedy a pointer
+      return { sym_var.val };
+    } else {
+      // Allocate, then return a pointer to that allocation
+      const auto alloca = b.CreateAlloca(sym_var.var_type.to_llvm_type(s, b.getContext()));
+      b.CreateStore(sym_var.val, alloca);
+      return { alloca };
     }
   }
 }

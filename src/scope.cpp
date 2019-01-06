@@ -80,4 +80,10 @@ namespace cello {
       return &res->second;
     }
   }
+
+  const var* scope::get_this_ptr() const {
+    if (this_ptr) { return &*this_ptr; }
+    else if (parent) { return parent->get_this_ptr(); }
+    else { return nullptr; }
+  }
 }

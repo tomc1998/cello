@@ -1,4 +1,5 @@
 #include "builtin_types.hpp"
+#include "struct_type.hpp"
 
 #include "scope.hpp"
 #include "llvm/IR/LLVMContext.h"
