@@ -7,10 +7,14 @@
   b u64
   c bool)
 
+(fn field-a u64 (foo my-test-struct)
+  (field foo a))
+
 (fn main u8 (argc u32 argv (ptr (ptr u8)))
   ;; Create a test struct
   (let foo my-test-struct
     (make my-test-struct a 3 b 4 c 0)) ;; We don't have bool literals yet!
   ;; Print out the struct, then exit
   (printf c"a = %d, b = %d, c = %d\n" (field foo a) (field foo b) (field foo c))
+  (printf c"Getting field a: %d\n" (field-a foo))
   0)

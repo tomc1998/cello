@@ -77,8 +77,7 @@ namespace cello {
   }
 
   nonstd::optional<function_call> parse_function_call(lexer &l) {
-    assert(l.peek()->type == token_type::ident);
-    const auto name = l.next()->val;
+    const auto name = parse_expr(l);
     ASSERT_TOK_EXISTS_OR_ERROR_AND_RET(l, "function arguments");
     // Parse function arguments here
     std::vector<expr> args;
@@ -96,7 +95,7 @@ namespace cello {
       return nonstd::nullopt;
     }
     l.next();
-    return { function_call { name, args } };
+    return { function_call { new expr(*name), args } };
   }
 
   nonstd::optional<make_expr> parse_make_expr(lexer &l) {
@@ -166,7 +165,7 @@ namespace cello {
         else { return { { sl, *e } }; };
       } else if (l.peek()->val == "let" || l.peek()->val == "mut") {
         const auto expr_type = l.next()->val;
-        ASSERT_TOK_EXISTS_OR_ERROR_AND_RET(l, "variable name");
+        ASSERT_TOK_EXISTS_OR_ERROR_AND_RET(l, "symbol name");
         const auto name = l.next()->val;
         ASSERT_TOK_EXISTS_OR_ERROR_AND_RET(l, "type");
         assert(l.peek()->val != "auto" && "Unimplemented type inference handling");
@@ -191,7 +190,7 @@ namespace cello {
         assert(false && "Unreachable");
       } else if (l.peek()->val == "set") {
         l.next();
-        ASSERT_TOK_EXISTS_OR_ERROR_AND_RET(l, "variable name");
+        ASSERT_TOK_EXISTS_OR_ERROR_AND_RET(l, "symbol name");
         const auto name = l.next()->val;
         ASSERT_TOK_EXISTS_OR_ERROR_AND_RET(l, "expr value");
         if (l.peek()->val == ")") {
@@ -212,14 +211,14 @@ namespace cello {
           return nonstd::nullopt;
         }
         l.next();
-        return { { sl, set_expr { variable { name }, new expr(*e) } } };
-      } else if (l.peek()->type == token_type::ident) { // Function call
+        return { { sl, set_expr { symbol { name }, new expr(*e) } } };
+      } else {
         const auto function_call = parse_function_call(l);
         if (!function_call) { return nonstd::nullopt; }
         return { { sl, *function_call } };
       }
     } else if (l.peek()->type == token_type::ident) {
-      return { { sl, variable { l.next()->val } } };
+      return { { sl, symbol { l.next()->val } } };
     } else if (l.peek()->type == token_type::c_string_lit) {
       const auto string_tok = *l.next();
       const auto s = nonstd::string_view(string_tok.val.begin() + 2, string_tok.val.size() - 3);
@@ -247,7 +246,7 @@ namespace cello {
                          + "," + x.rchild->to_string() + ")";
                      },
                      [&](un_op_expr x)        { return std::string("un_op_expr"); },
-                     [&](variable x)          { return std::string("variable(") + std::string(x.val) + ")"; },
+                     [&](symbol x)          { return std::string("symbol(") + std::string(x.val) + ")"; },
                      [&](int_lit x)           { return std::string("int_lit"); },
                      [&](float_lit x)         { return std::string("float_lit"); },
                      [&](string_lit x)        { return std::string("string_lit"); },
@@ -293,7 +292,7 @@ namespace cello {
   }
 
   nonstd::optional<llvm::Value*> field_access_expr::code_gen(scope &s, llvm::IRBuilder<> &b) const {
-    assert(target->val.template is<variable>() && "We only support field access on variables");
+    assert(target->val.template is<symbol>() && "We only support field access on symbols");
     // First, get the target type
     const auto target_type = target->get_type(s);
     assert(target_type);
@@ -311,7 +310,7 @@ namespace cello {
     return { b.CreateExtractValue(*target_llvm_val, { *found_field_heap }) };
   }
 
-  nonstd::optional<llvm::Value*> variable::code_gen(const source_label &sl, scope &s,
+  nonstd::optional<llvm::Value*> symbol::find_as_var(const source_label &sl, const scope &s,
                                                     llvm::IRBuilder<> &b, bool deref_mut) const {
     const auto n_value = s.find_symbol_with_type(val, named_value_type::var);
     if (!n_value) {
@@ -326,6 +325,16 @@ namespace cello {
       return { v.val };
     }
   }
+
+  const function* symbol::find_as_function(const source_label &sl, const scope &s) const {
+    const auto n_value = s.find_symbol_with_type(val, named_value_type::function);
+    if (!n_value) {
+      report_error(sl, std::string("Undefined function '") + std::string(val) + "'");
+      return nullptr;
+    }
+    return &n_value->val.template get<function>();
+  }
+
 
   nonstd::optional<llvm::Value*> make_expr::code_gen(const source_label &sl, scope &s,
                                                      llvm::IRBuilder<> &b) const {
@@ -370,8 +379,8 @@ namespace cello {
     nonstd::optional<llvm::Value*> res = nonstd::nullopt;
     if (val.template is<bin_op_expr>()) {
       res = val.template get<bin_op_expr>().code_gen(sl, s, b);
-    } else if (val.template is<variable>()) {
-      res = val.template get<variable>().code_gen(sl, s, b);
+    } else if (val.template is<symbol>()) {
+      res = val.template get<symbol>().find_as_var(sl, s, b);
     } else if (val.template is<make_expr>()) {
       res = val.template get<make_expr>().code_gen(sl, s, b);
     } else if (val.template is<let_expr>()) {
@@ -404,7 +413,7 @@ namespace cello {
       // Find the var & gen the expr value
       // TODO optimize this unneeded symbol lookup
       const auto n_value = s.find_symbol_with_type(e.var.val, named_value_type::var);
-      const auto e_var = e.var.code_gen(sl, s, b, false);
+      const auto e_var = e.var.find_as_var(sl, s, b, false);
       if (!e_var) { return nonstd::nullopt; }
       const auto e_val = e.val->code_gen(s, b, &n_value->val.template get<var>().var_type);
       if (!e_val) { return nonstd::nullopt; }
@@ -481,19 +490,14 @@ namespace cello {
     } else if (val.template is<function_call>()) {
       const auto &fc = val.template get<function_call>();
       // Get function
-      const auto nv = s.find_symbol_with_type(fc.name, named_value_type::function);
-      if (!nv) {
-        report_error(sl, std::string("Unable to locate function with name '")
-                     + std::string(fc.name) + "'");
-        return nonstd::nullopt;
-      }
-      const auto &f = nv->val.template get<function>();
-      const auto llvm_function = f.get_cached_llvm_function();
+      const auto f = fc.name->find_as_function(s);
+      if (!f) { return nonstd::nullopt; }
+      const auto llvm_function = f->get_cached_llvm_function();
       assert(llvm_function);
 
-      if (f.args.size() != fc.arg_list.size() && !f.is_var_args()) {
-        report_error(sl, std::string("Expected ") + std::to_string(f.args.size()) + " args to call '"
-                     + std::string(fc.name) + "', but " + std::to_string(fc.arg_list.size())
+      if (f->args.size() != fc.arg_list.size() && !f->is_var_args()) {
+        report_error(sl, std::string("Expected ") + std::to_string(f->args.size()) + " args to call '"
+                     + std::string(fc.name->to_string()) + "', but " + std::to_string(fc.arg_list.size())
                      + " args were supplied.");
         return nonstd::nullopt;
       }
@@ -502,8 +506,8 @@ namespace cello {
       llvm::Value** args = new llvm::Value*[fc.arg_list.size()];
       for (unsigned ii = 0; ii < fc.arg_list.size(); ++ii) {
         type* arg_type = nullptr;
-        if (f.args.size() > ii) {
-          auto arg_type_opt = f.args[ii].type.code_gen(s);
+        if (f->args.size() > ii) {
+          auto arg_type_opt = f->args[ii].type.code_gen(s);
           if (!arg_type_opt) { return nonstd::nullopt; }
           auto &arg_type_unwrap = *arg_type_opt;
           arg_type = &arg_type_unwrap;
@@ -551,11 +555,11 @@ namespace cello {
       const auto bop = val.template get<bin_op_expr>();
       if (bop.is_bool_expr()) { return { builtin_ty_bool }; }
       return val.template get<bin_op_expr>().lchild->get_type(s);
-    } else if (val.template is<variable>()) {
-      const auto v = s.find_symbol_with_type(val.template get<variable>().val, named_value_type::var);
+    } else if (val.template is<symbol>()) {
+      const auto v = s.find_symbol_with_type(val.template get<symbol>().val, named_value_type::var);
       if (!v) {
-        report_error(sl, std::string("Cannot find variable with name '")
-                     + std::string(val.template get<variable>().val) + "'");
+        report_error(sl, std::string("Cannot find symbol with name '")
+                     + std::string(val.template get<symbol>().val) + "'");
         return nonstd::nullopt;
       }
       return { v->val.template get<var>().var_type };
@@ -575,10 +579,9 @@ namespace cello {
       else if (x.isIntN(64)) { return { builtin_ty_u64 }; }
       else { assert(false && "Int lit won't fit, insert proper error here"); }
     } else if (val.template is<function_call>()) {
-      const auto v = s.find_symbol_with_type(val.template get<function_call>().name,
-                                             named_value_type::function);
-      if (!v) { return nonstd::nullopt; }
-      return v->val.template get<function>().return_type.code_gen(s);
+      const auto f = val.template get<function_call>().name->find_as_function(s);
+      if (!f) { return nonstd::nullopt; };
+      return f->return_type.code_gen(s);
     } else if (val.template is<float_lit>()) {
       // TODO figure out precision ?
       return { builtin_ty_f32 };
@@ -613,5 +616,17 @@ namespace cello {
     }
     std::cerr << "UNIMPLEMENTED: get_type(" << to_string() << ")" << std::endl;
     assert(false);
+  }
+
+  const function* expr::find_as_function(const scope &s) const {
+    if (val.template is<field_access_expr>()) {
+      // Make sure this is a struct method, then return the associated function
+      assert(false && "Unimplemented");
+    } else if (val.template is<symbol>()) {
+      return val.template get<symbol>().find_as_function(sl, s);
+    } else {
+      report_error(sl, std::string("'") + to_string() + "' is not a function");
+      return nullptr;
+    }
   }
 }

@@ -17,6 +17,7 @@ namespace cello {
   class lexer;
   struct expr;
   struct scope;
+  class function;
 
   enum class bin_op {
     add, sub, div, mul, gt, ge, lt, le, eq
@@ -24,8 +25,8 @@ namespace cello {
 
   struct bin_op_expr {
     bin_op op;
-    std::unique_ptr<expr> lchild;
-    std::unique_ptr<expr> rchild;
+    expr* lchild;
+    expr* rchild;
     bin_op_expr(const bin_op_expr &other);
     bin_op_expr(bin_op op, expr* lchild,
                 expr* rchild) : op(op), lchild(lchild), rchild(rchild) {}
@@ -34,19 +35,25 @@ namespace cello {
   };
 
   struct un_op_expr {};
-  struct variable {
+  /** A string which references some item in the codebase. */
+  struct symbol {
     nonstd::string_view val;
     /**
+       Generates instructions to load this as a variable (assuming this IS a
+       variable). Reports error if this is a function or type.
        @param deref_mut=true - If set to false, don't generate a load
-       instruction for mutable variables. This is useful when querying the
-       variable location.
-       This function will assert if deref_mut is false, but the variable is
+       instruction for mutable symbols. This is useful when querying the
+       symbol location.
+       This function will assert if deref_mut is false, but the symbol is
        immutable (as the chances are this is a logic error on the compiler's
        part).
-     */
-    nonstd::optional<llvm::Value*> code_gen(const source_label& sl, scope &s,
-                                            llvm::IRBuilder<> &b, bool deref_mut=true) const;
+    */
+    nonstd::optional<llvm::Value*> find_as_var(const source_label& sl, const scope &s,
+                                               llvm::IRBuilder<> &b, bool deref_mut=true) const;
+    /** Find a function matching this symbol. Returns nullptr if not found. */
+    const function* find_as_function(const source_label &sl, const scope &s) const;
   };
+
   struct int_lit {
     llvm::APInt val;
   };
@@ -72,7 +79,7 @@ namespace cello {
 
   /** Access an element on a struct. This is effectively just a GEP. */
   struct field_access_expr {
-    std::unique_ptr<expr> target;
+    expr* target;
     nonstd::string_view field_name;
     field_access_expr(expr* target, nonstd::string_view field_name)
       : target(target), field_name(field_name) {}
@@ -81,40 +88,41 @@ namespace cello {
   };
 
   struct mut_expr {
-    variable var;
+    symbol var;
     type_ident type;
-    std::unique_ptr<expr> val;
+    expr* val;
     mut_expr(const mut_expr &other);
-    mut_expr(variable var, type_ident type, expr* val)
+    mut_expr(symbol var, type_ident type, expr* val)
       : var(var), type(type), val(val) {};
   };
 
   /** Declare an immutable value */
   struct let_expr {
-    variable var;
+    symbol var;
     type_ident type;
-    std::unique_ptr<expr> val;
+    expr* val;
     let_expr(const let_expr &other) noexcept;
-    let_expr(variable var, type_ident type, expr* val)
+    let_expr(symbol var, type_ident type, expr* val)
       : var(var), type(type), val(val) {};
   };
 
   struct function_call {
-    nonstd::string_view name;
+    /** The 'name' of the function */
+    expr* name;
     std::vector<expr> arg_list;
   };
 
   struct set_expr {
-    variable var;
-    std::unique_ptr<expr> val;
+    symbol var;
+    expr* val;
     set_expr(const set_expr &other) noexcept;
-    set_expr(variable var, expr* val)
+    set_expr(symbol var, expr* val)
       : var(var), val(val) {};
   };
 
   struct expr {
     source_label sl;
-    mapbox::util::variant<function_call, bin_op_expr, un_op_expr, variable, int_lit,
+    mapbox::util::variant<function_call, bin_op_expr, un_op_expr, symbol, int_lit,
                           float_lit, string_lit, c_string_lit, mut_expr, set_expr, let_expr,
                           while_expr, if_expr, field_access_expr, make_expr> val;
     std::string to_string() const;
@@ -130,6 +138,10 @@ namespace cello {
                                             const type* expected_type) const;
     /** Get the type of this expression */
     nonstd::optional<type> get_type(const scope& s) const;
+
+    /** Resolve this expression into a function. Returns nullptr and reports and
+    errors if not possible. */
+    const function* find_as_function(const scope &s) const;
   };
 
   nonstd::optional<expr> parse_expr(lexer &l);

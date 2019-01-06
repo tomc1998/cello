@@ -45,5 +45,7 @@ namespace cello {
     /** Nullptr if not found */
     const named_value* find_symbol_with_type(const nonstd::string_view name,
                                        const named_value_type type) const;
+    const named_value* find_symbol(const nonstd::string_view name) const;
+    named_value* find_symbol(const nonstd::string_view name);
   };
 }

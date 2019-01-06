@@ -55,4 +55,29 @@ namespace cello {
     }
   }
 
+  const named_value* scope::find_symbol(const nonstd::string_view name) const {
+    const auto res = symbol_table.find(name);
+    if (res == symbol_table.end()) {
+      if (parent) {
+        return parent->find_symbol(name);
+      } else {
+        return nullptr;
+      }
+    } else {
+      return &res->second;
+    }
+  }
+
+  named_value* scope::find_symbol(const nonstd::string_view name)  {
+    const auto res = symbol_table.find(name);
+    if (res == symbol_table.end()) {
+      if (parent) {
+        return parent->find_symbol(name);
+      } else {
+        return nullptr;
+      }
+    } else {
+      return &res->second;
+    }
+  }
 }
