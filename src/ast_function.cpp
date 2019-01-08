@@ -167,11 +167,11 @@ namespace cello {
       const auto &e = expressions[ii];
       if (ii == expressions.size() - 1) {
         const auto return_type_gen = *return_type.code_gen(s);
-        const auto value_opt = e.code_gen(function_scope, b, &return_type_gen);
+        const auto value_opt = e.code_gen<false>(function_scope, b, &return_type_gen);
         if (!value_opt) { has_errored = true; continue; }
         b.CreateRet(*value_opt);
       } else {
-        const auto value_opt = e.code_gen(function_scope, b, nullptr);
+        const auto value_opt = e.code_gen<false>(function_scope, b, nullptr);
         if (!value_opt) { has_errored = true; continue; }
       }
     }

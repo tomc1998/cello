@@ -17,4 +17,7 @@
   ;; Print out the struct, then exit
   (printf c"a = %d, b = %d, c = %d\n" (field foo a) (field foo b) (field foo c))
   (printf c"Getting field a: %d\n" (field-a foo))
+  (mut bar my-test-struct (make my-test-struct a 3 b 4 c 5))
+  (set (field bar a) 5)
+  (printf c"Bar.a = %d\n" (field bar a))
   0)

@@ -40,19 +40,12 @@ namespace cello {
   struct symbol {
     nonstd::string_view val;
     /**
-       Generates instructions to load this as a variable (assuming this IS a
-       variable). Reports error if this is a function or type.
-       @param deref_ptr=true - If set to false, don't generate a load
-       instruction for mutable or allocated symbols. This is useful when
-       querying the symbol location. This does NOT mean transparently deref
-       pointers - this is on a lower level, to do with the LLVM IR and whether a
-       symbol is on the stack or whether it's still in a 'register'.
-       This function will assert if deref_ptr is false, but the symbol is
-       not a pointer (as the chances are this is a logic error on the compiler's
-       part).
+       @tparam - If this is an l_value, return the address of the var, otherwise
+       deref
     */
-    nonstd::optional<llvm::Value*> find_as_var(const source_label& sl, const scope &s,
-                                               llvm::IRBuilder<> &b, bool deref_ptr=true) const;
+    template <bool l_value>
+    nonstd::optional<llvm::Value*> find_as_var(const source_label& sl, scope &s,
+                                               llvm::IRBuilder<> &b) const;
     /** Find a function matching this symbol. Returns nullptr if not found. */
     const function* find_as_function(const source_label &sl, const scope &s) const;
   };
@@ -80,15 +73,20 @@ namespace cello {
     nonstd::optional<llvm::Value*> code_gen(const source_label &sl, scope &s, llvm::IRBuilder<> &b) const;
   };
 
-  /** Access an element on a struct. This is effectively just a GEP. */
+  /** Access an element on a struct. This is effectively just a GEP, and optionally a load. */
   struct field_access_expr {
     expr* target;
     nonstd::string_view field_name;
     field_access_expr(expr* target, nonstd::string_view field_name)
       : target(target), field_name(field_name) {}
     field_access_expr(const field_access_expr& other);
-    nonstd::optional<llvm::Value*> code_gen(const source_label &sl,
-                                            scope &s, llvm::IRBuilder<> &b) const;
+    /**
+       @tparam l_value - If true, return a reference to the field - otherwise,
+       return a real value
+     */
+    template <bool l_value>
+    nonstd::optional<llvm::Value*> code_gen(const source_label &sl, scope &s,
+                                            llvm::IRBuilder<> &b) const;
   };
 
   struct mut_expr {
@@ -117,10 +115,10 @@ namespace cello {
   };
 
   struct set_expr {
-    symbol var;
+    expr* var;
     expr* val;
     set_expr(const set_expr &other) noexcept;
-    set_expr(symbol var, expr* val)
+    set_expr(expr* var, expr* val)
       : var(var), val(val) {};
   };
 
@@ -137,11 +135,21 @@ namespace cello {
        @param expected_type - The expected type. This will either generate an
        error or cast the result of this expression to the given type. If this
        is nullptr, no cast is performed.
+
+       @tparam l_value - If true, generate a pointer to the var. If false,
+       generate the actual value (since this would be an r-value). This means
+       that l_values can be written to, whereas r-values can just be treated as
+       the literal values.
     */
+    template <bool l_value>
     nonstd::optional<llvm::Value*> code_gen(scope &s, llvm::IRBuilder<> &b,
                                             const type* expected_type) const;
     /** Get the type of this expression */
     nonstd::optional<type> get_type(const scope& s) const;
+
+    /** Get the address of this expression (assuming an l-value). Stores a
+    variable in an alloca if not already. Reports error if not l-value. */
+    nonstd::optional<llvm::Value*> address_of(scope &s, llvm::IRBuilder<> &b) const;
 
     /** Resolve this expression into a function. Returns nullptr and reports and
     errors if not possible. */

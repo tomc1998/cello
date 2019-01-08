@@ -11,6 +11,8 @@
 
 namespace cello {
 
+  struct scope;
+
   /** Used for selecting a symbol with a given type */
   enum class named_value_type { type, var, function };
 
@@ -45,6 +47,9 @@ namespace cello {
     inline void set_mutable(bool val) { flags |= val ? FLAGS_MUT : 0; }
     inline void set_member(bool val) { flags |= val ? FLAGS_MEMBER : 0; }
     inline void set_allocated(bool val) {flags |= val ? FLAGS_ALLOCATED : 0;}
+
+    /** Gets the address of this var, or allocas if not available */
+    llvm::Value* address_of(const scope& s, llvm::IRBuilder<> &b);
   };
 
   struct named_value {

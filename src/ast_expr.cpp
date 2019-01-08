@@ -192,7 +192,8 @@ namespace cello {
       } else if (l.peek()->val == "set") {
         l.next();
         ASSERT_TOK_EXISTS_OR_ERROR_AND_RET(l, "symbol name");
-        const auto name = l.next()->val;
+        const auto name = parse_expr(l);
+        if (!name) { CONSUME_TO_END_PAREN_OR_ERROR(l); return nonstd::nullopt; }
         ASSERT_TOK_EXISTS_OR_ERROR_AND_RET(l, "expr value");
         if (l.peek()->val == ")") {
           report_error(l.get_curr_source_label(),
@@ -212,7 +213,7 @@ namespace cello {
           return nonstd::nullopt;
         }
         l.next();
-        return { { sl, set_expr { symbol { name }, new expr(*e) } } };
+        return { { sl, set_expr { new expr(*name), new expr(*e) } } };
       } else {
         const auto function_call = parse_function_call(l);
         if (!function_call) { return nonstd::nullopt; }
@@ -272,10 +273,10 @@ namespace cello {
   }
 
   nonstd::optional<llvm::Value*> bin_op_expr::code_gen(const source_label &sl, scope &s, llvm::IRBuilder<> &b) const {
-    const auto lval = lchild->code_gen(s, b, nullptr);
+    const auto lval = lchild->code_gen<false>(s, b, nullptr);
     if (!lval) { return nonstd::nullopt; }
     const auto lchild_type = *lchild->get_type(s);
-    const auto rval = rchild->code_gen(s, b, &lchild_type);
+    const auto rval = rchild->code_gen<false>(s, b, &lchild_type);
     if (!rval) { return nonstd::nullopt; }
     switch (op) {
     case bin_op::add: return { b.CreateAdd(*lval, *rval) };
@@ -293,6 +294,7 @@ namespace cello {
     assert(false);
   }
 
+  template <bool l_value>
   nonstd::optional<llvm::Value*> field_access_expr::code_gen(const source_label &sl,
                                                              scope &s, llvm::IRBuilder<> &b) const {
     assert(target->val.template is<symbol>() && "We only support field access on symbols");
@@ -311,39 +313,69 @@ namespace cello {
       report_error(sl, std::string("Can't find field '") + std::string(field_name) + "'");
       return nonstd::nullopt;
     }
-    // Codegen the target so we have a llvm::Value* to index
-    auto target_llvm_val = target->code_gen(s, b, nullptr);
+    // Codegen the target so we have a llvm::Value* to index. By passing l_value
+    // along, we can make sure we properly stack allocate if needed, so we don't
+    // need to worry about having a value-type target.
+    auto target_llvm_val = target->code_gen<l_value>(s, b, nullptr);
     if (!target_llvm_val) { return nonstd::nullopt; }
+    // Create geps / extract values
     if (target_type->num_ptr == 1) {
-      // Create a GEP and a load
-      const auto gep = b.CreateStructGEP(*target_llvm_val, (unsigned)found_field);
-      return { b.CreateLoad(gep) };
+      // If num_ptr == 1, we auto dereference the pointer when returning the field
+      if (l_value) {
+        if (target->is_pointer(s)) {
+          // We need to deref the pointer, then deref to the real location, then
+          // deref into the struct - so a gep of 3
+          return b.CreateStructGEP(b.CreateConstGEP1_32(*target_llvm_val, 0),
+                                   (unsigned)found_field);
+        } else {
+          // We can just deref like a normal struct
+          return b.CreateStructGEP(*target_llvm_val, (unsigned)found_field);
+        }
+      } else {
+        // If we're here, it's not an l-value so it'll be implicitely
+        // dereferenced one level by the symbol::find_as_var(), meaning just a
+        // standard struct GEP & load works here
+        return b.CreateLoad(b.CreateStructGEP(*target_llvm_val, (unsigned)found_field));
+      }
     } else if (target_type->num_ptr == 0) {
-      // Create an extractvalue, since this is a value type
-      const auto found_field_heap = new unsigned((unsigned)found_field);
-      return { b.CreateExtractValue(*target_llvm_val, { *found_field_heap }) };
+      if (l_value) {
+        const auto gep = b.CreateStructGEP(*target_llvm_val, (unsigned)found_field);
+        return gep;
+      } else {
+        // Extract value, since this is a value type struct and we want an
+        // r-value. Doesn't matter if the value is a pointer to an alloca or not
+        // - find_as_var with l_value = false will deref the value.
+        const auto found_field_heap = new unsigned((unsigned)found_field);
+        return { b.CreateExtractValue(*target_llvm_val, { *found_field_heap }) };
+      }
     } else {
       report_error(sl, "Can't index a field transparently through more than 1 level of indirection");
       return nonstd::nullopt;
     }
   }
 
-  nonstd::optional<llvm::Value*> symbol::find_as_var(const source_label &sl, const scope &s,
-                                                    llvm::IRBuilder<> &b, bool deref_ptr) const {
+  template <bool l_value>
+  nonstd::optional<llvm::Value*> symbol::find_as_var(const source_label &sl, scope &s,
+                                                    llvm::IRBuilder<> &b) const {
     if (val == "this") {
       const auto this_ptr = s.get_this_ptr();
       if (!this_ptr) { return nonstd::nullopt; }
       else { return this_ptr->val; }
     }
-    const auto n_value = s.find_symbol_with_type(val, named_value_type::var);
+    auto n_value = s.find_symbol_with_type(val, named_value_type::var);
     if (!n_value) {
       report_error(sl, std::string("Undefined variable '") + std::string(val) + "'");
       return nonstd::nullopt;
     }
-    const auto &v = n_value->val.template get<var>();
-    if (deref_ptr) {
+    auto &v = n_value->val.template get<var>();
+    if (!l_value) {
       return { v.is_pointer() ? b.CreateLoad(v.val) : v.val };
     } else {
+      if (v.is_pointer()) {
+        return { v.val };
+      } else {
+        return { v.address_of(s, b) };
+      }
       assert(v.is_pointer());
       return { v.val };
     }
@@ -357,7 +389,6 @@ namespace cello {
     }
     return &n_value->val.template get<function>();
   }
-
 
   nonstd::optional<llvm::Value*> make_expr::code_gen(const source_label &sl, scope &s,
                                                      llvm::IRBuilder<> &b) const {
@@ -386,7 +417,7 @@ namespace cello {
       }
       const auto field_type = struct_data->get_field_with_index(field_ix).get_type(s);
       assert(field_type);
-      const auto llvm_val = val.code_gen(s, b, &*field_type);
+      const auto llvm_val = val.code_gen<false>(s, b, &*field_type);
       if (!llvm_val) { return nonstd::nullopt; }
       // Store the index on the heap so we can make an arrayref to it
       indices[curr_ix] = field_ix;
@@ -397,20 +428,37 @@ namespace cello {
     return curr_val;
   }
 
+  /** Assert that the expr is an l value. If not, returns false and reports an
+  error - otherwise, returns true. */
+  bool assert_l_value(const expr& e) {
+    if (e.val.template is<symbol>() ||
+        e.val.template is<field_access_expr>()) {
+      return true;
+    }
+    report_error(e.sl, e.to_string() + "required to be an l-value, but is actually an r-value");
+    return false;
+  }
+
+  template <bool l_value>
   nonstd::optional<llvm::Value*> expr::code_gen(scope &s, llvm::IRBuilder<> &b, const type* expected_type) const {
     auto &llvm_ctx = b.getContext();
+    // Assert if we have something that can't be an L-value
+    if (l_value) {
+        if (!assert_l_value(*this)) { return nonstd::nullopt; }
+    }
+
     nonstd::optional<llvm::Value*> res = nonstd::nullopt;
     if (val.template is<bin_op_expr>()) {
       res = val.template get<bin_op_expr>().code_gen(sl, s, b);
     } else if (val.template is<symbol>()) {
-      res = val.template get<symbol>().find_as_var(sl, s, b);
+      res = val.template get<symbol>().find_as_var<l_value>(sl, s, b);
     } else if (val.template is<make_expr>()) {
       res = val.template get<make_expr>().code_gen(sl, s, b);
     } else if (val.template is<let_expr>()) {
       const auto &e = val.template get<let_expr>();
       const auto e_type = e.type.code_gen(s);
       if (!e_type) { return nonstd::nullopt; }
-      const auto e_val = e.val->code_gen(s, b, &*e_type);
+      const auto e_val = e.val->code_gen<false>(s, b, &*e_type);
       if (!e_val) { return nonstd::nullopt; }
       assert(e_type.has_value());
       assert(e_val.has_value());
@@ -420,7 +468,7 @@ namespace cello {
       const auto &e = val.template get<mut_expr>();
       const auto e_type = e.type.code_gen(s);
       if (!e_type) { return nonstd::nullopt; }
-      const auto e_val = e.val->code_gen(s, b, &*e_type);
+      const auto e_val = e.val->code_gen<false>(s, b, &*e_type);
       if (!e_val) { return nonstd::nullopt; }
       // Allocate space
       const auto alloca = b.CreateAlloca(e_type->to_llvm_type(s, llvm_ctx));
@@ -433,14 +481,15 @@ namespace cello {
       const auto &e = val.template get<set_expr>();
       // Find the var & gen the expr value
       // TODO optimize this unneeded symbol lookup
-      const auto n_value = s.find_symbol_with_type(e.var.val, named_value_type::var);
-      const auto e_var = e.var.find_as_var(sl, s, b, false);
+      assert(e.var && e.val);
+      const auto e_var = e.var->code_gen<true>(s, b, nullptr);
       if (!e_var) { return nonstd::nullopt; }
-      const auto e_val = e.val->code_gen(s, b, &n_value->val.template get<var>().var_type);
+      const auto e_var_type = *e.var->get_type(s);
+      const auto e_val = e.val->code_gen<false>(s, b, &e_var_type);
       if (!e_val) { return nonstd::nullopt; }
       res = b.CreateStore(*e_val, *e_var);
     } else if (val.template is<field_access_expr>()) {
-      res = val.template get<field_access_expr>().code_gen(sl, s, b);
+      res = val.template get<field_access_expr>().code_gen<l_value>(sl, s, b);
     } else if (val.template is<while_expr>()) {
       const auto &e = val.template get<while_expr>();
       const auto prev_block = b.GetInsertBlock();
@@ -453,13 +502,13 @@ namespace cello {
       b.CreateBr(body_cond_block);
       b.SetInsertPoint(body_cond_block);
       // Generate condition
-      const auto cond_val_ = e.cond->code_gen(s, b, &builtin_ty_bool);
+      const auto cond_val_ = e.cond->code_gen<false>(s, b, &builtin_ty_bool);
       assert(cond_val_);
       b.CreateCondBr(*cond_val_, body_block, end_block);
       prev_block->getParent()->getBasicBlockList().push_back(body_block);
       b.SetInsertPoint(body_block);
       for (const auto &body_expr : e.body) {
-        body_expr.code_gen(body_scope, b, nullptr);
+        body_expr.code_gen<false>(body_scope, b, nullptr);
       }
       b.CreateBr(body_cond_block);
       prev_block->getParent()->getBasicBlockList().push_back(end_block);
@@ -475,14 +524,14 @@ namespace cello {
       const auto end_block = llvm::BasicBlock::Create(llvm_ctx, "end_block");
 
       // Generate condition
-      const auto cond_val = e.cond->code_gen(s, b, &builtin_ty_bool);
+      const auto cond_val = e.cond->code_gen<false>(s, b, &builtin_ty_bool);
       b.CreateCondBr(*cond_val, true_block, false_block);
 
       // Generate true / false code
       // True
       b.SetInsertPoint(true_block);
       auto true_scope = s.create_subscope();
-      const auto true_val = e.true_expr->code_gen(true_scope, b, nullptr);
+      const auto true_val = e.true_expr->code_gen<false>(true_scope, b, nullptr);
       if (!true_val) { return nonstd::nullopt; }
       b.CreateBr(end_block);
       true_block = b.GetInsertBlock();
@@ -491,7 +540,7 @@ namespace cello {
       b.SetInsertPoint(false_block);
       auto false_scope = s.create_subscope();
       const auto true_expr_type = *e.true_expr->get_type(s);
-      const auto false_val = e.false_expr->code_gen(false_scope, b, &true_expr_type);
+      const auto false_val = e.false_expr->code_gen<false>(false_scope, b, &true_expr_type);
       if (!false_val) { return nonstd::nullopt; }
       b.CreateBr(end_block);
       false_block = b.GetInsertBlock();
@@ -541,7 +590,7 @@ namespace cello {
           auto &arg_type_unwrap = *arg_type_opt;
           arg_type = &arg_type_unwrap;
         }
-        const auto expr_opt = fc.arg_list[ii].code_gen(s, b, arg_type);
+        const auto expr_opt = fc.arg_list[ii].code_gen<false>(s, b, arg_type);
         if (!expr_opt) {
           return nonstd::nullopt;
         }
@@ -686,33 +735,28 @@ namespace cello {
     }
   }
 
-  nonstd::optional<llvm::Value*> expr::find_receiver(scope &s, llvm::IRBuilder<> &b) const {
-    if (!val.template is<field_access_expr>()) {
-      return nonstd::nullopt;
-    }
-    const auto &fae = val.template get<field_access_expr>();
-    assert (fae.target->val.template is<symbol>() && "Only support getting receiver for symbols!");
-    const auto &sym = fae.target->val.template get<symbol>();
-    auto sym_var_opt = s.find_symbol_with_type(sym.val, named_value_type::var);
-    if (!sym_var_opt) {
-      report_error(sl, std::string("Cannot find receiver for symbol ") + std::string(sym.val));
-      return nonstd::nullopt;
-    }
-    auto &sym_var = sym_var_opt->val.template get<var>();
-    if (sym_var.is_pointer()) {
-      // Is alreaedy a pointer
-      return { sym_var.val };
+  nonstd::optional<llvm::Value*> expr::address_of(scope &s, llvm::IRBuilder<> &b) const {
+    if (val.template is<symbol>()) {
+      const auto &sym = val.template get<symbol>();
+      auto sym_var_opt = s.find_symbol_with_type(sym.val, named_value_type::var);
+      if (!sym_var_opt) {
+        report_error(sl, std::string("Cannot find receiver for symbol ") + std::string(sym.val));
+        return nonstd::nullopt;
+      }
+      return { sym_var_opt->val.template get<var>().address_of(s, b) };
+    } else if (val.template is<field_access_expr>()) {
+      assert(false && "Unimplemented");
     } else {
-      // Allocate, then return a pointer to that allocation.
-      const auto alloca = b.CreateAlloca(sym_var.var_type.to_llvm_type(s, b.getContext()));
-      b.CreateStore(sym_var.val, alloca);
-      // Make sure we set_allocated to true, indicating that in the future if we
-      // want to get the address of this var, we can just use this allocation,
-      // rather than re-allocating.
-      sym_var.val = alloca;
-      sym_var.set_allocated(true);
-      return { alloca };
+      report_error(sl, std::string("Trying to get the address of ")
+                   + to_string() + ", which is an r-value");
+      return nonstd::nullopt;
     }
+  }
+
+  nonstd::optional<llvm::Value*> expr::find_receiver(scope &s, llvm::IRBuilder<> &b) const {
+    if (!val.template is<field_access_expr>()) { return nonstd::nullopt; }
+    const auto &fae = val.template get<field_access_expr>();
+    return fae.target->address_of(s, b);
   }
 
   bool expr::is_pointer(const scope& s) const {
@@ -725,4 +769,17 @@ namespace cello {
     assert(nv);
     return nv->val.template get<var>().is_pointer();
   }
+
+  template nonstd::optional<llvm::Value*>
+  expr::code_gen<true>(scope &s, llvm::IRBuilder<> &b, const type* expected_type) const;
+  template nonstd::optional<llvm::Value*>
+  expr::code_gen<false>(scope &s, llvm::IRBuilder<> &b, const type* expected_type) const;
+  template nonstd::optional<llvm::Value*>
+  field_access_expr::code_gen<true>(const source_label &sl, scope &s, llvm::IRBuilder<> &b) const;
+  template nonstd::optional<llvm::Value*>
+  field_access_expr::code_gen<false>(const source_label &sl, scope &s, llvm::IRBuilder<> &b) const;
+  template nonstd::optional<llvm::Value*>
+  symbol::find_as_var<true>(const source_label &sl, scope &s, llvm::IRBuilder<> &b) const;
+  template nonstd::optional<llvm::Value*>
+  symbol::find_as_var<false>(const source_label &sl, scope &s, llvm::IRBuilder<> &b) const;
 }

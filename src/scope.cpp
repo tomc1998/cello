@@ -86,4 +86,21 @@ namespace cello {
     else if (parent) { return parent->get_this_ptr(); }
     else { return nullptr; }
   }
+
+  llvm::Value* var::address_of(const scope& s, llvm::IRBuilder<> &b) {
+    if (is_pointer()) {
+      // Is alreaedy a pointer
+      return val;
+    } else {
+      // Allocate, then return a pointer to that allocation.
+      const auto alloca = b.CreateAlloca(var_type.to_llvm_type(s, b.getContext()));
+      b.CreateStore(val, alloca);
+      // Make sure we set_allocated to true, indicating that in the future if we
+      // want to get the address of this var, we can just use this allocation,
+      // rather than re-allocating.
+      val = alloca;
+      set_allocated(true);
+      return alloca;
+    }
+  }
 }
